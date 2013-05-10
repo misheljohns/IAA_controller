@@ -1,5 +1,5 @@
 /* -------------------------------------------------------------------------- *
- *                      OpenSim:  ControllerExample.cpp                       *
+ *                      OpenSim:  Controller.cpp                       *
  * -------------------------------------------------------------------------- *
  * The OpenSim API is a toolkit for musculoskeletal modeling and simulation.  *
  * See http://opensim.stanford.edu and the NOTICE file for more information.  *
@@ -7,7 +7,7 @@
  * National Institutes of Health (U54 GM072970, R24 HD065690) and by DARPA    *
  * through the Warrior Web program.                                           *
  *                                                                            *
- * Copyright (c) 2005-2012 Stanford University and the Authors                *
+ * Copyright (c) 2005-2013 Stanford University and the Authors                *
  * Author(s): Chand T. John, Ajay Seth                                        *
  *                                                                            *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may    *
@@ -21,13 +21,7 @@
  * limitations under the License.                                             *
  * -------------------------------------------------------------------------- */
 
-/* 
- *  Below is an extension example of an OpenSim application that provides its own 
- *  main() routine.  It applies a controller to the forward simulation of a tug-of-war 
- *  between two muscles pulling on a block.
- */
-
-// Author:  Chand T. John and Ajay Seth
+// Author:  Mishel Johns, Chris Ploch
 
 //==============================================================================
 //==============================================================================
@@ -111,48 +105,62 @@ public:
 		// Get the current time in the simulation.
 		double t = s.getTime();
 
-		// Read the mass of the block.
-		double blockMass = getModel().getBodySet().get( "block" ).getMass();
-
-		Model model1 = getModel();
+		//Model model1 = getModel();
 		//model1.getActuators
-
-
-
+		
 		int num = getActuatorSet().getSize();
 		Muscle** listMusc = new Muscle*[num];
+		double* listacts = new double[num];
+		double* listmaxfrcs = new double[num];
 		for(int i = 0; i < num; i++)
 		{
+			//get muscles
 			listMusc[i] = dynamic_cast<Muscle*>	( &getActuatorSet().get(i) );
-			//getActuatorSet().
+			listacts[i] = listMusc[i]->getActivation(s);
+			listmaxfrcs[i] = listMusc[i]->getMaxIsometricForce();
 			//std::cout << "Muscle "<< i <<" activation = " << listMusc[i]->getActivation(s)<< std::endl;
-			//std::cout << "Muscle "<< i <<" max isometric force = " << listMusc[i]->getMaxIsometricForce()<< std::endl;
+			//std::cout << "Muscle "<< i <<" max isometric force = " << listMusc[i]->getMaxIsometricForce()<< std::endl;			
+		}
 
+		//dummy for now
+		//Vector* indacc = new Vector[num];
+		//indacc[0] = Vector(
+		double* indacc = new double[num];
+		indacc[0] = 12.000;
+		indacc[1] = 1.000;
+
+
+		/*
+		A - matrix of induced accelerations when force is increased by 1N
+		B - desired acceleration
+		of the form Ax = B
+		x - increase in force required for each muscle
+
+		Underconstrained problem;
+		We need to fix this while minimizing |x|, perhaps weighting it by 1/((1-listacts[i])*listmaxfrcs[i]) <so muscles with a lot more potential to increase the force will be activated while almost saturated ones have minimized forces.
+		But we should be encouraging heavily loaded muscles to reduce their loads if doing that gives us accelerations in the desired direction.
+		We need to check for activations going over 1, and fixing it. Also, it might sometimes not be possible to get a linear combination of accelerations in the direction we want, in which case we need to try for an approx solution.
+		*/
+
+
+		for(int i = 0; i < num; i++)
+		{
 			// Thelen muscle has only one control
 			Vector muscleControl(1, 0.1);
 			// Add in the controls computed for this muscle to the set of all model controls
 			listMusc[i]->addInControls(muscleControl, controls);
-			 
-			//double FoptL = leftMuscle->getMaxIsometricForce();
-			//
-			//leftMuscle->getActivation(s);
-
-			
 		}
 
-
+	//delete[] ListMusc;
 	}
 
 // This section contains the member variables of this controller class.
 private:
 
-	/** Position gain for this controller */
+	/** Just keeping these  here to be replaced by our variables later */
 	double kp;
 
-	//////////////////////////////////////////////////////////////
-	// 7) Add a member variable kv that is the velocity gain    //
-	//    for this controller.                                  //
-	//////////////////////////////////////////////////////////////
+	
 	double kv;
 
 };
