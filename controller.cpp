@@ -125,8 +125,8 @@ public:
 		{
 			listMusc[i] = dynamic_cast<Muscle*>	( &getActuatorSet().get(i) );
 			//getActuatorSet().
-			std::cout << "Muscle "<< i <<" activation = " << listMusc[i]->getActivation(s)<< std::endl;
-			std::cout << "Muscle "<< i <<" max isometric force = " << listMusc[i]->getMaxIsometricForce()<< std::endl;
+			//std::cout << "Muscle "<< i <<" activation = " << listMusc[i]->getActivation(s)<< std::endl;
+			//std::cout << "Muscle "<< i <<" max isometric force = " << listMusc[i]->getMaxIsometricForce()<< std::endl;
 
 			// Thelen muscle has only one control
 			Vector muscleControl(1, 0.1);
@@ -166,10 +166,13 @@ private:
  */
 int main()
 {
+	bool useVisualizer = true;
+
 	try {
 		// Create an OpenSim model from the model file provided.
 		Model osimModel( "tugOfWar_model_ThelenOnly.osim" );
-
+		osimModel.setUseVisualizer(useVisualizer);
+		
 		// Define the initial and final simulation times.
 		double initialTime = 0.0;
 		double finalTime = 1.0;
@@ -192,6 +195,19 @@ int main()
 		CoordinateSet& modelCoordinateSet =
 			osimModel.updCoordinateSet();
 
+		// Setup visualizer (if required).
+        if (useVisualizer) {
+            Visualizer& viz = osimModel.updVisualizer().updSimbodyVisualizer();
+            viz.setWindowTitle("Testing controller");
+		    viz.setBackgroundType(viz.GroundAndSky);
+		    viz.setGroundHeight(0.0);
+		    viz.setShowShadows(true);
+		    //viz.setShowFrameRate(false);
+		    //viz.setShowSimTime(true);
+		    //viz.setShowFrameNumber(false);
+        }
+
+
 		//// Define the initial muscle states.
 		//const Set<Muscle>& muscleSet = osimModel.getMuscles();
 		//ActivationFiberLengthMuscle* muscle1 = dynamic_cast<ActivationFiberLengthMuscle*>( &muscleSet.get(0) );
@@ -209,8 +225,7 @@ int main()
 		
 
 		// Create the integrator and manager for the simulation.
-		SimTK::RungeKuttaMersonIntegrator
-			integrator( osimModel.getMultibodySystem() );
+		SimTK::RungeKuttaMersonIntegrator integrator( osimModel.getMultibodySystem() );
 		integrator.setAccuracy( 1.0e-4 );
 
 		Manager manager( osimModel, integrator );
@@ -229,13 +244,14 @@ int main()
 		// Integrate from initial time to final time.
 		manager.setInitialTime( initialTime );
 		manager.setFinalTime( finalTime );
-		std::cout << "\n\nIntegrating from " << initialTime
-			<< " to " << finalTime << std::endl;
+		std::cout << "\n\nIntegrating from " << initialTime << " to " << finalTime << std::endl;
 		manager.integrate( si );
 
 		// Save the simulation results.
 		osimModel.printControlStorage( "tugOfWar_controls.sto" );
 		manager.getStateStorage().print( "tugOfWar_states.sto" );
+
+		std::cout << "\nResults saved. " << std::endl;
 	}
     catch (const std::exception &ex) {
 		
