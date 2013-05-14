@@ -14,4 +14,7 @@ Steps:
 	
 Doubts:
 	- Thelen muscle quation with PE, SE and active force terms... how do we take care of the PE and SE terms in the controller... and do we really need to look at the length and velocity multipliers?
-	- 
+	- It seems IAA can give induced accelerations of any coordinate, not just the center of mass. Since the coordinate position is easier to calculate and access in each timestep, would it make more sense to work with coordinates of the pevis or the thorax rather than the CoM position?
+	
+Further ideas:
+	- perhaps we can pass the initial state of the system (si) to the controller before adding it, and also pass to it what coordinates we want to bring back to the initial states after perturbation.

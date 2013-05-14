@@ -28,6 +28,7 @@
 
 // Include OpenSim and functions
 #include <OpenSim/OpenSim.h>
+//#include "InducedAccelerationsSolver.cpp"
 
 // This allows us to use OpenSim functions, classes, etc., without having to
 // prefix the names of those things with "OpenSim::".
@@ -37,38 +38,8 @@ using namespace OpenSim;
 // prefix the names of those things with "SimTK::".
 using namespace SimTK;
 
-
-//______________________________________________________________________________
 /**
- * The controller will try to make the model follow this position
- * in the z direction.
- */
-double desiredModelZPosition( double t ) {
-	// z(t) = 0.15 sin( pi * t )
-	return 0.15 * sin( Pi * t );
-}
-//////////////////////////////////////////////////////////////////////
-// 1) Add a function to compute the desired velocity of the model   //
-//    in the z direction.                                           //
-//////////////////////////////////////////////////////////////////////
-double desiredModelZVelocity( double t ) {
-	// z(t) = 0.15 sin( pi * t )
-	return 0.15 * Pi * cos( Pi * t );
-}
-//______________________________________________________________________________
-/**
- * The controller will try to make the model follow this acceleration
- * in the z direction.
- */
-double desiredModelZAcceleration( double t ) {
-	// z''(t) = -(0.15*pi^2) sin( pi * t )
-	return -0.15 * Pi * Pi * sin( Pi * t );
-}
-
-//______________________________________________________________________________
-/**
- * This controller will try to track a desired trajectory of the block in
- * the tug-of-war model.
+ * This controller will try to use IAA on the model to bring it back to its starting position of its center of mass
  */
 class IAAController : public Controller {
 OpenSim_DECLARE_CONCRETE_OBJECT(IAAController, Controller);
@@ -108,6 +79,7 @@ public:
 		//Model model1 = getModel();
 		//model1.getActuators
 		
+		
 		int num = getActuatorSet().getSize();
 		Muscle** listMusc = new Muscle*[num];
 		double* listacts = new double[num];
@@ -124,13 +96,35 @@ public:
 			//std::cout << "Muscle "<< i <<" activation = " << listMusc[i]->getActivation(s)<< std::endl;
 			//std::cout << "Muscle "<< i <<" max isometric force = " << listMusc[i]->getMaxIsometricForce()<< std::endl;			
 		}
+		
+		//_model->
+		//const Coordinate& Coords = _model->getCoordinateSet().get( "blockToGround_zTranslation" );
+		//double z  = Coords.getValue(s);
+		//double zv  = Coords.getSpeedValue(s);
+
+
+		/* Desired acceleration B */
+		// B = kp*(Desired position - Actual position) + kv*(- Actual velocity)
+
+
 
 		//dummy for now
 		//Vector* indacc = new Vector[num];
 		//indacc[0] = Vector(
-		double* indacc = new double[num];
-		indacc[0] = 12.000;
-		indacc[1] = 1.000;
+
+		double** indacc = new double*[num];
+		for(int i = 0; i < num; ++i)
+		{
+			indacc[i] = new double[3];
+		}
+
+		//randomly giving values for now
+		indacc[0][0] = 12.000;
+		indacc[0][1] = 2.000;
+		indacc[0][2] = 5.000;
+		indacc[1][0] = 12.000;
+		indacc[1][1] = 2.000;
+		indacc[1][2] = 2.000;
 
 
 		/*
@@ -145,10 +139,12 @@ public:
 		We need to check for activations going over 1, and fixing it. Also, it might sometimes not be possible to get a linear combination of accelerations in the direction we want, in which case we need to try for an approx solution.
 		*/
 
+
+
 		for(int i = 0; i < num; i++)
 		{
 			// Thelen muscle has only one control
-			Vector muscleControl(1, 0.1);
+			Vector muscleControl(1, 0.8);
 			// Add in the controls computed for this muscle to the set of all model controls
 			listMusc[i]->addInControls(muscleControl, controls);
 		}
@@ -159,10 +155,8 @@ public:
 // This section contains the member variables of this controller class.
 private:
 
-	/** Just keeping these  here to be replaced by our variables later */
+	/** Gains on position and velocity error */
 	double kp;
-
-	
 	double kv;
 
 };
@@ -180,15 +174,16 @@ int main()
 
 	try {
 		// Create an OpenSim model from the model file provided.
-		Model osimModel( "tugOfWar_model_ThelenOnly.osim" );
+		//Model osimModel( "tugOfWar_model_ThelenOnly.osim" );
+		Model osimModel( "C:\\OpenSim 3.0\\Models\\Gait2392_Simbody\\gait2392_simbody.osim" );
 		osimModel.setUseVisualizer(useVisualizer);
 		
 		// Define the initial and final simulation times.
 		double initialTime = 0.0;
-		double finalTime = 1.0;
+		double finalTime = 0.2;
 
-		// Create the controller.
-		IAAController *controller = new IAAController(0,0);
+		// Create the controller. Pass Kp, Kv values.
+		IAAController *controller = new IAAController(0.1,0.1);
 
 		// Give the controller the Model's actuators so it knows
 		// to control those actuators.
@@ -202,8 +197,7 @@ int main()
 		SimTK::State& si = osimModel.initSystem();
 
 		// Define non-zero (defaults are 0) states for the free joint.
-		CoordinateSet& modelCoordinateSet =
-			osimModel.updCoordinateSet();
+		CoordinateSet& modelCoordinateSet = osimModel.updCoordinateSet();
 
 		// Setup visualizer (if required).
         if (useVisualizer) {
@@ -217,22 +211,9 @@ int main()
 		    //viz.setShowFrameNumber(false);
         }
 
-
-		//// Define the initial muscle states.
-		//const Set<Muscle>& muscleSet = osimModel.getMuscles();
-		//ActivationFiberLengthMuscle* muscle1 = dynamic_cast<ActivationFiberLengthMuscle*>( &muscleSet.get(0) );
-		//ActivationFiberLengthMuscle* muscle2 = dynamic_cast<ActivationFiberLengthMuscle*>( &muscleSet.get(1) );
-		//if((muscle1 == NULL) || (muscle2 == NULL)){
-		//	throw OpenSim::Exception("ControllerExample: muscle1 or muscle2 is not an ActivationFiberLengthMuscle and example cannot proceed.");
-		//}
-		//muscle1->setActivation(si, 0.01 ); // muscle1 activation
-		//muscle1->setFiberLength(si, 0.2 ); // muscle1 fiber length
-		//muscle2->setActivation(si, 0.01 ); // muscle2 activation
-		//muscle2->setFiberLength(si, 0.2 ); // muscle2 fiber length
-
         // Compute initial conditions for muscles.
-		//osimModel.computeEquilibriumForAuxiliaryStates(si);
-		
+		//osimModel.computeEquilibriumForAuxiliaryStates(si); // this function seems to not exist anymore
+		osimModel.equilibrateMuscles(si);
 
 		// Create the integrator and manager for the simulation.
 		SimTK::RungeKuttaMersonIntegrator integrator( osimModel.getMultibodySystem() );
