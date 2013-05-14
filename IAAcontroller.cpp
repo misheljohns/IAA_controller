@@ -28,6 +28,7 @@
 
 // Include OpenSim and functions
 #include <OpenSim/OpenSim.h>
+#include "C:\\Storage\\Acads\\ME485\\Project\\armadillo-3.820.0\\include\\armadillo"
 //#include "InducedAccelerationsSolver.cpp"
 
 // This allows us to use OpenSim functions, classes, etc., without having to
@@ -96,36 +97,40 @@ public:
 			//std::cout << "Muscle "<< i <<" activation = " << listMusc[i]->getActivation(s)<< std::endl;
 			//std::cout << "Muscle "<< i <<" max isometric force = " << listMusc[i]->getMaxIsometricForce()<< std::endl;			
 		}
+		std::cout << num << std::endl;
 		
 		//_model->
-		//const Coordinate& Coords = _model->getCoordinateSet().get( "blockToGround_zTranslation" );
-		//double z  = Coords.getValue(s);
-		//double zv  = Coords.getSpeedValue(s);
+		const Coordinate& Coords = _model->getCoordinateSet().get( "blockToGround_zTranslation" );
+		double z  = Coords.getValue(s);
+		double zv  = Coords.getSpeedValue(s);
 
+		int numd = 1;
 
 		/* Desired acceleration B */
-		// B = kp*(Desired position - Actual position) + kv*(- Actual velocity)
-
-
+		double* B = new double[numd];
+		B[0] = kp*(0.1 - z) + kv*(- zv);
 
 		//dummy for now
 		//Vector* indacc = new Vector[num];
 		//indacc[0] = Vector(
 
-		double** indacc = new double*[num];
-		for(int i = 0; i < num; ++i)
-		{
-			indacc[i] = new double[3];
-		}
+		//double** indacc = new double*[num];
+		//for(int i = 0; i < num; ++i)
+		//{
+		//	indacc[i] = new double[numd];
+		//}
 
-		//randomly giving values for now
-		indacc[0][0] = 12.000;
-		indacc[0][1] = 2.000;
-		indacc[0][2] = 5.000;
-		indacc[1][0] = 12.000;
-		indacc[1][1] = 2.000;
-		indacc[1][2] = 2.000;
+		////randomly giving values for now
+		//indacc[0][0] = 12.000;
+		//indacc[0][1] = 2.000;
+		//indacc[0][2] = 5.000;
+		//indacc[1][0] = 12.000;
+		//indacc[1][1] = 2.000;
+		//indacc[1][2] = 2.000;
 
+		double* indacc = new double[num];
+		indacc[0] = 1/20;
+		indacc[1] = -1/20;
 
 		/*
 		A - matrix of induced accelerations of the CoM when force is increased by 1N
@@ -139,12 +144,36 @@ public:
 		We need to check for activations going over 1, and fixing it. Also, it might sometimes not be possible to get a linear combination of accelerations in the direction we want, in which case we need to try for an approx solution.
 		*/
 
+		//soln for A'*inv(A*A') for 2x1 matrix
+		double* x = new double[num];
+		x[0] = indacc[0]*B[0]/(indacc[0]*indacc[0] + indacc[1]*indacc[1]);
+		x[1] = indacc[1]*B[0]/(indacc[0]*indacc[0] + indacc[1]*indacc[1]);
 
+		//appplying the weights
+		//x = Wy, where W - matrix of weights, diagonal elements = 1/((1-listacts[i])*listmaxfrcs[i])
+		//y = inv(w)*x
+
+		//flawed method, look at new eqn in README
+		//double** W = new double*[num];
+		//for(int i = 0; i < num; ++i)
+		//{
+		//	W[i] = new double[numd];
+		//}
+		////giving values
+		//W[0][0] = 1/((1-listacts[0])*listmaxfrcs[0]);
+		//W[0][1] = 0.000;
+		//W[1][0] = 0.000;
+		//W[1][1] = 1/((1-listacts[1])*listmaxfrcs[1]);
+		////we need to normalize W, not doing it now..
+
+		//double* y = new double[num];
+		//y[0] = (1/W[0][0]*W[1][1])*W[1][1]*x[0];
+		//y[1] = (1/W[0][0]*W[1][1])*W[0][0]*x[1];
 
 		for(int i = 0; i < num; i++)
 		{
 			// Thelen muscle has only one control
-			Vector muscleControl(1, 0.8);
+			Vector muscleControl(1,0.0);// x[i]
 			// Add in the controls computed for this muscle to the set of all model controls
 			listMusc[i]->addInControls(muscleControl, controls);
 		}
@@ -174,16 +203,16 @@ int main()
 
 	try {
 		// Create an OpenSim model from the model file provided.
-		//Model osimModel( "tugOfWar_model_ThelenOnly.osim" );
-		Model osimModel( "C:\\OpenSim 3.0\\Models\\Gait2392_Simbody\\gait2392_simbody.osim" );
+		Model osimModel( "tugOfWar_model_ThelenOnly.osim" );
+		//Model osimModel( "C:\\OpenSim 3.0\\Models\\Gait2392_Simbody\\gait2392_simbody.osim" );
 		osimModel.setUseVisualizer(useVisualizer);
 		
 		// Define the initial and final simulation times.
 		double initialTime = 0.0;
-		double finalTime = 0.2;
+		double finalTime = 10.0;
 
 		// Create the controller. Pass Kp, Kv values.
-		IAAController *controller = new IAAController(0.1,0.1);
+		IAAController *controller = new IAAController(100,0);
 
 		// Give the controller the Model's actuators so it knows
 		// to control those actuators.
@@ -239,10 +268,26 @@ int main()
 		manager.integrate( si );
 
 		// Save the simulation results.
-		osimModel.printControlStorage( "tugOfWar_controls.sto" );
-		manager.getStateStorage().print( "tugOfWar_states.sto" );
+		osimModel.printControlStorage( "output_controls.sto" );
+		manager.getStateStorage().print( "output_states.sto" );
 
 		std::cout << "\nResults saved. " << std::endl;
+
+
+
+		/*arma::mat A;
+  
+  A << 0.165300 << 0.454037 << 0.995795 << 0.124098 << 0.047084 << arma::endr
+    << 0.688782 << 0.036549 << 0.552848 << 0.937664 << 0.866401 << arma::endr
+    << 0.348740 << 0.479388 << 0.506228 << 0.145673 << 0.491547 << arma::endr
+    << 0.148678 << 0.682258 << 0.571154 << 0.874724 << 0.444632 << arma::endr
+    << 0.245726 << 0.595218 << 0.409327 << 0.367827 << 0.385736 << arma::endr;
+  
+  A.print("A =");
+  
+  // determinant
+  std::cout << "det(A) = " << arma::det(A) << std::endl;*/
+
 	}
     catch (const std::exception &ex) {
 		

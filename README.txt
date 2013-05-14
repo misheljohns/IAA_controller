@@ -8,9 +8,10 @@ Steps:
 	gets present activation, max force, so current force
 	runs IAA on the model, get acceleration/force for each muscle <_computePotentialsOnlyProp>, get IAA matrix [A]
 	gets present CoM position, velocity, acceleration, uses a control law to get desired acc as input for the next step [B]
+		B = kp*(Xdes - Xmeas) + kv(0 - Vmeas)
 	solves Ax = B to get x		[x] - vector of <additional> muscle forces to be applied; weighted by 1/((1-listacts[i])*listmaxfrcs[i]) <so muscles with a lot more potential to increase the force will be activated while almost saturated ones have minimized forces.
-	from x, get a - muscle activations required to get the calculated force
-	if a > 1, set a = 1, redo from 11
+		General norm minimization with equality constraints - Min ||Wx||; subject to Ax = B
+		[x = inv(W'*W)*A'*inv(A*inv(W'*W)*A')*b]
 	
 Doubts:
 	- Thelen muscle quation with PE, SE and active force terms... how do we take care of the PE and SE terms in the controller... and do we really need to look at the length and velocity multipliers?
@@ -18,3 +19,4 @@ Doubts:
 	
 Further ideas:
 	- perhaps we can pass the initial state of the system (si) to the controller before adding it, and also pass to it what coordinates we want to bring back to the initial states after perturbation.
+	- if the weighting system does not work to stop activations > 1, we can try iterations: from x, get a - muscle activations required to get the calculated force; if a > 1, set a = 1, redo minimization with other muscles only
