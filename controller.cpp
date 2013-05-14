@@ -70,8 +70,8 @@ double desiredModelZAcceleration( double t ) {
  * This controller will try to track a desired trajectory of the block in
  * the tug-of-war model.
  */
-class TugOfWarController : public Controller {
-OpenSim_DECLARE_CONCRETE_OBJECT(TugOfWarController, Controller);
+class IAAController : public Controller {
+OpenSim_DECLARE_CONCRETE_OBJECT(IAAController, Controller);
 
 // This section contains methods that can be called in this controller class.
 public:
@@ -90,7 +90,7 @@ public:
 	//    of aKv.  Remember to add a line describing aKv in    //
 	//    the comment above (below the line describing aKp).   //
 	/////////////////////////////////////////////////////////////
-	TugOfWarController(double aKp,double aKv) : Controller(), kp( aKp ), kv( aKv) 
+	IAAController(double aKp,double aKv) : Controller(), kp( aKp ), kv( aKv) 
 	{
 	}
 
@@ -118,6 +118,9 @@ public:
 			listMusc[i] = dynamic_cast<Muscle*>	( &getActuatorSet().get(i) );
 			listacts[i] = listMusc[i]->getActivation(s);
 			listmaxfrcs[i] = listMusc[i]->getMaxIsometricForce();
+			//listMusc[i]->getPennationAngle ??
+			//listMusc[i]->getActiveForceLengthMultiplier
+			//listMusc[i]->getForceVelocityMultiplier
 			//std::cout << "Muscle "<< i <<" activation = " << listMusc[i]->getActivation(s)<< std::endl;
 			//std::cout << "Muscle "<< i <<" max isometric force = " << listMusc[i]->getMaxIsometricForce()<< std::endl;			
 		}
@@ -131,7 +134,7 @@ public:
 
 
 		/*
-		A - matrix of induced accelerations when force is increased by 1N
+		A - matrix of induced accelerations of the CoM when force is increased by 1N
 		B - desired acceleration
 		of the form Ax = B
 		x - increase in force required for each muscle
@@ -141,7 +144,6 @@ public:
 		But we should be encouraging heavily loaded muscles to reduce their loads if doing that gives us accelerations in the desired direction.
 		We need to check for activations going over 1, and fixing it. Also, it might sometimes not be possible to get a linear combination of accelerations in the direction we want, in which case we need to try for an approx solution.
 		*/
-
 
 		for(int i = 0; i < num; i++)
 		{
@@ -186,7 +188,7 @@ int main()
 		double finalTime = 1.0;
 
 		// Create the controller.
-		TugOfWarController *controller = new TugOfWarController(0,0);
+		IAAController *controller = new IAAController(0,0);
 
 		// Give the controller the Model's actuators so it knows
 		// to control those actuators.
