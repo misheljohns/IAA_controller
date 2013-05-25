@@ -74,149 +74,103 @@ public:
 		
 		//model1.getActuators		
 		
-		int num = getActuatorSet().getSize();
-		Muscle** listMusc = new Muscle*[num];
-		double* listacts = new double[num];
-		double* listmaxfrcs = new double[num];
-		for(int i = 0; i < num; i++)
+		int numMuscs = getActuatorSet().getSize();
+		Muscle** listMusc = new Muscle*[numMuscs];
+		double* listacts = new double[numMuscs];
+		double* listmaxfrcs = new double[numMuscs];
+		for(int i = 0; i < numMuscs; i++)
 		{
 			//get muscles
 			listMusc[i] = dynamic_cast<Muscle*>	( &getActuatorSet().get(i) );
 			listacts[i] = listMusc[i]->getActivation(s);
 			listmaxfrcs[i] = listMusc[i]->getMaxIsometricForce();
-			//listMusc[i]->getPennationAngle ??
+			//listMusc[i]->getPennationAngle
 			//listMusc[i]->getActiveForceLengthMultiplier
 			//listMusc[i]->getForceVelocityMultiplier
 			//std::cout << "Muscle "<< i <<" activation = " << listMusc[i]->getActivation(s)<< std::endl;
 			//std::cout << "Muscle "<< i <<" max isometric force = " << listMusc[i]->getMaxIsometricForce()<< std::endl;			
 		}
-		//std::cout << num << std::endl;
+		//std::cout << numMuscs << std::endl;
 		
 		//_model->
 		//CoordinateSet _coordSet = _model->getCoordinateSet();
-		const Coordinate& Coords = _model->getCoordinateSet().get( "blockToGround_zTranslation" );
-		double z  = Coords.getValue(s);
-		double zv  = Coords.getSpeedValue(s);
+		//const Coordinate& Coords = _model->getCoordinateSet().get( "blockToGround_zTranslation" );
+		//double z  = Coords.getValue(s);
+		//double zv  = Coords.getSpeedValue(s);
 
-		int numd = 1;
-
+		int numdims = 3;
 
 		/* Desired acceleration B */
-		double* B = new double[numd];
-		B[0] = kp*(0.1 - z) + kv*(- zv);
-
-
-		//IAA
-
-			const SimTK::Vector& solve(const SimTK::State& s,
-				const std::string& forceName,
-				bool computeActuatorPotentialOnly=false,
-				SimTK::Vector_<SimTK::SpatialVec>* constraintReactions=0);
-			//then use
-			SimTK::Vec3 getInducedMassCenterAcceleration(const SimTK::State& s);
-
-
-
-
-
-
-
-
-
-
-		Array<Array<double> *> _coordIndAccs;
-
+		Matrix b(numdims,1);
 		
+		//using position of pelvis for now
+		b(0,0) = -1*_model->getCoordinateSet().get( "pelvis_tx" ).getValue(s);
+		b(1,0) = -1*_model->getCoordinateSet().get( "pelvis_ty" ).getValue(s);
+		b(2,0) = -1*_model->getCoordinateSet().get( "pelvis_tz" ).getValue(s);
 
-
-
-
-		//dummy for now
-	//	for(int i=0;i<_model->getCoordinateSet().getSize();i++) {
-	//	_coordIndAccs[i]->setSize(0);
-	//}
-		//for(int i=0;i<_model->getCoordinateSet().getSize();i++) {
-		//	double acc = _model->getCoordinateSet().get(i).getAccelerationValue(s);
-		//	std::cout<<acc<<std::endl;
-		////_model->_coordinateSet
-		//	//if(getInDegrees()) 
-		//	//	acc *= SimTK_RADIAN_TO_DEGREE;	
-		//	_coordIndAccs[i]->append(1, &acc);
-		//}
-		//Matrix M(20,10);
-		//Matrix b(1,10);
-		//FactorQTZ f(M);
-		//Matrix x(1,10);
-		//Vec3& v = new Vec3*();
-		//f.solve(b,x);
+		//failed  attempt to get CoM accelerations
+		/*
+		Matrix des_com_pos(3,1);
+		des_com_pos(0,0) = 0;
+		des_com_pos(1,0) = 0;
+		des_com_pos(2,0) = 0;
 		
-		//SimTK::lapackInverse;
-		//	SimTK:::
-	//for(int i=0;i<_coordSet.getSize();i++) {
-	//	_coordIndAccs[i]->setSize(0);
-	//}
-
-/*		Model tempModel( "tugOfWar_model_ThelenOnly_copy.osim" );
-		double aT = s.getTime();
-		SimTK::Vector Q = s.getQ();
-		SimTK::State s_analysis = tempModel.initializeState();
-		tempModel.initStateWithoutRecreatingSystem(s_analysis);
-		s_analysis.setTime(aT);
-		s_analysis.setQ(Q);
-		tempModel.setPropertiesFromState(s_analysis);
-	// Use this state for the remainder of this step (record)
-		s_analysis = tempModel.getMultibodySystem().realizeTopology();
-	// DO NOT recreate the system, will lose location of constraint
-		tempModel.initStateWithoutRecreatingSystem(s_analysis);
-		//_model->setPropertiesFromState(s_analysis);
-		// Use this state for the remainder of this step (record)
-		//s = _model->getMultibodySystem().realizeTopology();
-		// DO NOT recreate the system, will lose location of constraint
-		//_model->initStateWithoutRecreatingSystem(s);
-		////calc accelerations - present, not potentials
-		//_model->getMultibodySystem().realize(s, SimTK::Stage::Acceleration);
-		tempModel.getMultibodySystem().realize(s, SimTK::Stage::Dynamics);
-		s_analysis.setU(s.getU());
-			s_analysis.setZ(s.getZ());
-		tempModel.getMultibodySystem().realize(s, SimTK::Stage::Acceleration);
-		tempModel.setPropertiesFromState(s_analysis);
-		//// Get Accelerations for kinematics of bodies
-		//for(int i=0;i<_model->getCoordinateSet().getSize();i++) {
-		//	double acc = _model->getCoordinateSet().get(i).getAccelerationValue(s);
-		//	//std::cout<<acc<<std::endl;
-		////_model->_coordinateSet
-		//	//if(getInDegrees()) 
-		//	//	acc *= SimTK_RADIAN_TO_DEGREE;	
-		//	//_coordIndAccs[i]->append(1, &acc);
-		//}
-		Vec3 vec = tempModel.getMultibodySystem().getMatterSubsystem().calcSystemMassCenterAccelerationInGround(s);
-		std::cout<<"success";
+		MultibodySystem &sys = _model->updMultibodySystem();
+		//Vector &mobilityForces = sys.updMobilityForces(s, Stage::Dynamics);
+		sys.realize(s, Stage::Dynamics);
+		//mobilityForces[0] = 0;
+		//mobilityForces[1] = 0;
+		//sys.realize(s, Stage::Acceleration); //-crashes it every time; so giving  up on COM accleration for now
+		Matrix com_pos, com_vel;
+		Vec3 com_pos_vec = sys.getMatterSubsystem().calcSystemMassCenterLocationInGround(s);
+		Vec3 com_vel_vec = sys.getMatterSubsystem().calcSystemMassCenterVelocityInGround(s);
+		for(int i = 0; i < 3; i ++)
+		{
+			com_pos(i,0) = com_pos_vec(i);
+			com_vel(i,0) = com_vel_vec(i);
+		}
+		std::cout<<"COM_position : "<<com_pos<<std::endl;
+		std::cout<<"COM_velocity : "<<com_vel<<std::endl;
+		b = kp*(des_com_pos - com_pos) + kv*(0 - com_vel);
+		std::cout<<"COM_desired_acc : "<<b<<std::endl;
 		*/
-			// FILL KINEMATICS ARRAY
-			//_comIndAccs.append(3, &vec[0]);
 
 
-		//Vector* indacc = new Vector[num];
-		//indacc[0] = Vector(
+		//get Induced Accelerations
+		Matrix A(numdims,numMuscs);
+		A = 1;
+		
+		/*
+		InducedAccelerationsSolver iaaSolver(*_model); //compile error here...
+		// Compute velocity contribution 
+		Vector udot_vel = iaaSolver.solve(s, "velocity"); 
+		std::cout<<"acc_vel : "<<udot_vel<<std::endl;
+		*/
 
-		//double** indacc = new double*[num];
-		//for(int i = 0; i < num; ++i)
-		//{
-		//	indacc[i] = new double[numd];
-		//}
 
-		////randomly giving values for now
-		//indacc[0][0] = 12.000;
-		//indacc[0][1] = 2.000;
-		//indacc[0][2] = 5.000;
-		//indacc[1][0] = 12.000;
-		//indacc[1][1] = 2.000;
-		//indacc[1][2] = 2.000;
+		std::cout<<"A : "<<A;
+		std::cout<<"b : "<<b;
+		Matrix W(numMuscs,numMuscs);
+		W = 1;
+		Matrix WTW(numMuscs,numMuscs);
+		WTW = (~W)*W;
+		//std::cout<<WTW;
+		Matrix WTWinv(numMuscs,numMuscs);
+		FactorLU WTWLU(WTW);
+		WTWLU.inverse(WTWinv);
+		//std::cout<<WTWinv;
+		Matrix AWTWAT(numdims,numdims);
+		AWTWAT = A*WTW*(~A);
+		Matrix AWTWATinv(numdims,numdims);
+		FactorLU AWTWATLU(AWTWAT);
+		AWTWATLU.inverse(AWTWATinv);
+		Matrix x(numMuscs,1);
+		x = WTWinv*(~A)*AWTWATinv*b;
+		std::cout<<"x :"<<x<<"Working, muhahahaha"<<std::endl;
+	
+	
+	//x = inv(W'*W)*A'*inv(A*inv(W'*W)*A')*b
 
-		/*double* indacc = new double[num];
-		indacc[0] = 1/20;
-		indacc[1] = -1/20;
-*/
 		/*
 		A - matrix of induced accelerations of the CoM when force is increased by 1N
 		B - desired acceleration
@@ -257,7 +211,7 @@ public:
 		//y[0] = (1/W[0][0]*W[1][1])*W[1][1]*x[0];
 		//y[1] = (1/W[0][0]*W[1][1])*W[0][0]*x[1];
 
-		for(int i = 0; i < num; i++)
+		for(int i = 0; i < numMuscs; i++)
 		{
 			// Thelen muscle has only one control
 			Vector muscleControl(1,0.5);// x[i]
@@ -288,83 +242,18 @@ private:
  */
 int main()
 {
-	int dims = 3;
-	int muscs = 20;
-	Matrix A(dims,muscs);
-	A = 1;
-	std::cout<<A;
-	Matrix b(dims,1);
-	b = 0;
-	std::cout<<b;
-	//b.
-	b(0,0) = 1;
-	b(1,0) = 2;
-	b(2,0) = 3;
-
-	std::cout<<b;
-	/*
-	FactorQTZ f(A);
-	Matrix x(muscs,1);
-	f.solve(b,x);//(x = inv(A)*B;)
-	//Vec3& v = new Vec3*();
-	std::cout<<x;
-	//x = x.transpose();
-	std::cout<<x;
-	Matrix W(muscs,muscs);
-	W = 1;
-	Matrix tmp(muscs,muscs);
-	tmp = (~W)*W;
-	FactorQTZ f1(tmp);
-	Matrix tmp2(muscs,dims);
-	f1.solve(~A,tmp2); 
-	//W.transpose
-	*/
 	
-	//A.resize(dof,dof);
-	Matrix W(muscs,muscs);
-	W = 1;
-	//Matrix WT(muscs,muscs);
-	//WT = ~W;
-	Matrix WTW(muscs,muscs);
-	WTW = (~W)*W;
-	std::cout<<WTW;
-	Matrix WTWinv(muscs,muscs);
-	FactorLU WTWLU(WTW);
-	WTWLU.inverse(WTWinv);
-	std::cout<<WTWinv;
-	Matrix AWTWAT(dims,dims);
-	AWTWAT = A*WTW*(~A);
-	Matrix AWTWATinv(dims,dims);
-	FactorLU AWTWATLU(AWTWAT);
-	AWTWATLU.inverse(AWTWATinv);
-	Matrix x(muscs,1);
-	x = WTWinv*(~A)*AWTWATinv*b;
-	std::cout<<x<<"Working, muhahahaha";
-	
-	/*
-	FactorLU ALU(A);
-	Matrix Ainv(muscs, dims);
-	ALU.inverse(Ainv);
-	*/
-	//x = inv(W'*W)*A'*inv(A*inv(W'*W)*A')*b
-
-
-
-	/*
-	
-
-
 	bool useVisualizer = true;
 
 	try {
 		// Create an OpenSim model from the model file provided.
-		Model osimModel( "tugOfWar_model_ThelenOnly.osim" );
-		//Model osimModel( "C:\\OpenSim 3.0\\Models\\Gait2392_Simbody\\gait2392_simbody.osim" );
+		//Model osimModel( "tugOfWar_model_ThelenOnly.osim" );
+		Model osimModel( "C:\\OpenSim 3.0\\Models\\Gait2392_Simbody\\gait2392_simbody.osim" );
 		osimModel.setUseVisualizer(useVisualizer);
 		
 		// Define the initial and final simulation times.
 		double initialTime = 0.0;
-		double finalTime = 10.0;
+		double finalTime = 1.0;
 
 		// Create the controller. Pass Kp, Kv values.
 		IAAController *controller = new IAAController(100,0);
@@ -444,5 +333,5 @@ int main()
 
 	// If this program executed up to this line, return 0 to
 	// indicate that the intended lines of code were executed.
-	*/return 0;
+	return 0;
 }

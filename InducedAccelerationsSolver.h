@@ -28,7 +28,7 @@
 //=============================================================================
 #include <OpenSim/Simulation/Solver.h>
 // Header to define analysis (DLL) interface
-#include "osimAnalysesDLL.h"
+#include <OpenSim/Analyses/osimAnalysesDLL.h>
 
 namespace OpenSim { 
 

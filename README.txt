@@ -42,3 +42,10 @@ Further ideas:
 - how to fix the feet - rolling
 
 aj trunk list
+
+
+
+TODO:
+- get IAAsolver working
+- weld feet to ground
+- get com acceleration
