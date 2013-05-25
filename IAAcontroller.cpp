@@ -28,8 +28,8 @@
 
 // Include OpenSim and functions
 #include <OpenSim/OpenSim.h>
-#include "C:\\Storage\\Acads\\ME485\\Project\\armadillo-3.820.0\\include\\armadillo"
-//#include "InducedAccelerationsSolver.cpp"
+// AJ's InducedAccelerationSolver
+#include "InducedAccelerationsSolver.h"
 
 // This allows us to use OpenSim functions, classes, etc., without having to
 // prefix the names of those things with "OpenSim::".
@@ -54,14 +54,7 @@ public:
 	 * @param aKp Position gain by which the position error will be multiplied
 	 * @param aKv velocity gain by which velocity error will be multiplied
 	 */
-	/////////////////////////////////////////////////////////////
-	// 2) Add a parameter aKv for velocity gain to the         //
-	//    argument list for this function.  Also add this      //
-	//    parameter to the initializer list below so that a    //
-	//    new member variable kv is initialized to the value   //
-	//    of aKv.  Remember to add a line describing aKv in    //
-	//    the comment above (below the line describing aKp).   //
-	/////////////////////////////////////////////////////////////
+
 	IAAController(double aKp,double aKv) : Controller(), kp( aKp ), kv( aKv) 
 	{
 	}
@@ -78,8 +71,8 @@ public:
 		double t = s.getTime();
 
 		//Model model1 = getModel();
-		//model1.getActuators
 		
+		//model1.getActuators		
 		
 		int num = getActuatorSet().getSize();
 		Muscle** listMusc = new Muscle*[num];
@@ -97,20 +90,112 @@ public:
 			//std::cout << "Muscle "<< i <<" activation = " << listMusc[i]->getActivation(s)<< std::endl;
 			//std::cout << "Muscle "<< i <<" max isometric force = " << listMusc[i]->getMaxIsometricForce()<< std::endl;			
 		}
-		std::cout << num << std::endl;
+		//std::cout << num << std::endl;
 		
 		//_model->
+		//CoordinateSet _coordSet = _model->getCoordinateSet();
 		const Coordinate& Coords = _model->getCoordinateSet().get( "blockToGround_zTranslation" );
 		double z  = Coords.getValue(s);
 		double zv  = Coords.getSpeedValue(s);
 
 		int numd = 1;
 
+
 		/* Desired acceleration B */
 		double* B = new double[numd];
 		B[0] = kp*(0.1 - z) + kv*(- zv);
 
+
+		//IAA
+
+			const SimTK::Vector& solve(const SimTK::State& s,
+				const std::string& forceName,
+				bool computeActuatorPotentialOnly=false,
+				SimTK::Vector_<SimTK::SpatialVec>* constraintReactions=0);
+			//then use
+			SimTK::Vec3 getInducedMassCenterAcceleration(const SimTK::State& s);
+
+
+
+
+
+
+
+
+
+
+		Array<Array<double> *> _coordIndAccs;
+
+		
+
+
+
+
 		//dummy for now
+	//	for(int i=0;i<_model->getCoordinateSet().getSize();i++) {
+	//	_coordIndAccs[i]->setSize(0);
+	//}
+		//for(int i=0;i<_model->getCoordinateSet().getSize();i++) {
+		//	double acc = _model->getCoordinateSet().get(i).getAccelerationValue(s);
+		//	std::cout<<acc<<std::endl;
+		////_model->_coordinateSet
+		//	//if(getInDegrees()) 
+		//	//	acc *= SimTK_RADIAN_TO_DEGREE;	
+		//	_coordIndAccs[i]->append(1, &acc);
+		//}
+		//Matrix M(20,10);
+		//Matrix b(1,10);
+		//FactorQTZ f(M);
+		//Matrix x(1,10);
+		//Vec3& v = new Vec3*();
+		//f.solve(b,x);
+		
+		//SimTK::lapackInverse;
+		//	SimTK:::
+	//for(int i=0;i<_coordSet.getSize();i++) {
+	//	_coordIndAccs[i]->setSize(0);
+	//}
+
+/*		Model tempModel( "tugOfWar_model_ThelenOnly_copy.osim" );
+		double aT = s.getTime();
+		SimTK::Vector Q = s.getQ();
+		SimTK::State s_analysis = tempModel.initializeState();
+		tempModel.initStateWithoutRecreatingSystem(s_analysis);
+		s_analysis.setTime(aT);
+		s_analysis.setQ(Q);
+		tempModel.setPropertiesFromState(s_analysis);
+	// Use this state for the remainder of this step (record)
+		s_analysis = tempModel.getMultibodySystem().realizeTopology();
+	// DO NOT recreate the system, will lose location of constraint
+		tempModel.initStateWithoutRecreatingSystem(s_analysis);
+		//_model->setPropertiesFromState(s_analysis);
+		// Use this state for the remainder of this step (record)
+		//s = _model->getMultibodySystem().realizeTopology();
+		// DO NOT recreate the system, will lose location of constraint
+		//_model->initStateWithoutRecreatingSystem(s);
+		////calc accelerations - present, not potentials
+		//_model->getMultibodySystem().realize(s, SimTK::Stage::Acceleration);
+		tempModel.getMultibodySystem().realize(s, SimTK::Stage::Dynamics);
+		s_analysis.setU(s.getU());
+			s_analysis.setZ(s.getZ());
+		tempModel.getMultibodySystem().realize(s, SimTK::Stage::Acceleration);
+		tempModel.setPropertiesFromState(s_analysis);
+		//// Get Accelerations for kinematics of bodies
+		//for(int i=0;i<_model->getCoordinateSet().getSize();i++) {
+		//	double acc = _model->getCoordinateSet().get(i).getAccelerationValue(s);
+		//	//std::cout<<acc<<std::endl;
+		////_model->_coordinateSet
+		//	//if(getInDegrees()) 
+		//	//	acc *= SimTK_RADIAN_TO_DEGREE;	
+		//	//_coordIndAccs[i]->append(1, &acc);
+		//}
+		Vec3 vec = tempModel.getMultibodySystem().getMatterSubsystem().calcSystemMassCenterAccelerationInGround(s);
+		std::cout<<"success";
+		*/
+			// FILL KINEMATICS ARRAY
+			//_comIndAccs.append(3, &vec[0]);
+
+
 		//Vector* indacc = new Vector[num];
 		//indacc[0] = Vector(
 
@@ -128,10 +213,10 @@ public:
 		//indacc[1][1] = 2.000;
 		//indacc[1][2] = 2.000;
 
-		double* indacc = new double[num];
+		/*double* indacc = new double[num];
 		indacc[0] = 1/20;
 		indacc[1] = -1/20;
-
+*/
 		/*
 		A - matrix of induced accelerations of the CoM when force is increased by 1N
 		B - desired acceleration
@@ -144,10 +229,12 @@ public:
 		We need to check for activations going over 1, and fixing it. Also, it might sometimes not be possible to get a linear combination of accelerations in the direction we want, in which case we need to try for an approx solution.
 		*/
 
+
+
 		//soln for A'*inv(A*A') for 2x1 matrix
-		double* x = new double[num];
+		/*double* x = new double[num];
 		x[0] = indacc[0]*B[0]/(indacc[0]*indacc[0] + indacc[1]*indacc[1]);
-		x[1] = indacc[1]*B[0]/(indacc[0]*indacc[0] + indacc[1]*indacc[1]);
+		x[1] = indacc[1]*B[0]/(indacc[0]*indacc[0] + indacc[1]*indacc[1]);*/
 
 		//appplying the weights
 		//x = Wy, where W - matrix of weights, diagonal elements = 1/((1-listacts[i])*listmaxfrcs[i])
@@ -173,11 +260,13 @@ public:
 		for(int i = 0; i < num; i++)
 		{
 			// Thelen muscle has only one control
-			Vector muscleControl(1,0.0);// x[i]
+			Vector muscleControl(1,0.5);// x[i]
 			// Add in the controls computed for this muscle to the set of all model controls
 			listMusc[i]->addInControls(muscleControl, controls);
+			//Vector muscleControl2(1,0.1);
+			//listMusc[0]->addInControls(muscleControl2, controls);
 		}
-
+		
 	//delete[] ListMusc;
 	}
 
@@ -199,6 +288,72 @@ private:
  */
 int main()
 {
+	int dims = 3;
+	int muscs = 20;
+	Matrix A(dims,muscs);
+	A = 1;
+	std::cout<<A;
+	Matrix b(dims,1);
+	b = 0;
+	std::cout<<b;
+	//b.
+	b(0,0) = 1;
+	b(1,0) = 2;
+	b(2,0) = 3;
+
+	std::cout<<b;
+	/*
+	FactorQTZ f(A);
+	Matrix x(muscs,1);
+	f.solve(b,x);//(x = inv(A)*B;)
+	//Vec3& v = new Vec3*();
+	std::cout<<x;
+	//x = x.transpose();
+	std::cout<<x;
+	Matrix W(muscs,muscs);
+	W = 1;
+	Matrix tmp(muscs,muscs);
+	tmp = (~W)*W;
+	FactorQTZ f1(tmp);
+	Matrix tmp2(muscs,dims);
+	f1.solve(~A,tmp2); 
+	//W.transpose
+	*/
+	
+	//A.resize(dof,dof);
+	Matrix W(muscs,muscs);
+	W = 1;
+	//Matrix WT(muscs,muscs);
+	//WT = ~W;
+	Matrix WTW(muscs,muscs);
+	WTW = (~W)*W;
+	std::cout<<WTW;
+	Matrix WTWinv(muscs,muscs);
+	FactorLU WTWLU(WTW);
+	WTWLU.inverse(WTWinv);
+	std::cout<<WTWinv;
+	Matrix AWTWAT(dims,dims);
+	AWTWAT = A*WTW*(~A);
+	Matrix AWTWATinv(dims,dims);
+	FactorLU AWTWATLU(AWTWAT);
+	AWTWATLU.inverse(AWTWATinv);
+	Matrix x(muscs,1);
+	x = WTWinv*(~A)*AWTWATinv*b;
+	std::cout<<x<<"Working, muhahahaha";
+	
+	/*
+	FactorLU ALU(A);
+	Matrix Ainv(muscs, dims);
+	ALU.inverse(Ainv);
+	*/
+	//x = inv(W'*W)*A'*inv(A*inv(W'*W)*A')*b
+
+
+
+	/*
+	
+
+
 	bool useVisualizer = true;
 
 	try {
@@ -242,11 +397,11 @@ int main()
 
         // Compute initial conditions for muscles.
 		//osimModel.computeEquilibriumForAuxiliaryStates(si); // this function seems to not exist anymore
-		osimModel.equilibrateMuscles(si);
+		//osimModel.equilibrateMuscles(si);
 
 		// Create the integrator and manager for the simulation.
 		SimTK::RungeKuttaMersonIntegrator integrator( osimModel.getMultibodySystem() );
-		integrator.setAccuracy( 1.0e-4 );
+		integrator.setAccuracy( 1.0e-8 );
 
 		Manager manager( osimModel, integrator );
 
@@ -275,18 +430,6 @@ int main()
 
 
 
-		/*arma::mat A;
-  
-  A << 0.165300 << 0.454037 << 0.995795 << 0.124098 << 0.047084 << arma::endr
-    << 0.688782 << 0.036549 << 0.552848 << 0.937664 << 0.866401 << arma::endr
-    << 0.348740 << 0.479388 << 0.506228 << 0.145673 << 0.491547 << arma::endr
-    << 0.148678 << 0.682258 << 0.571154 << 0.874724 << 0.444632 << arma::endr
-    << 0.245726 << 0.595218 << 0.409327 << 0.367827 << 0.385736 << arma::endr;
-  
-  A.print("A =");
-  
-  // determinant
-  std::cout << "det(A) = " << arma::det(A) << std::endl;*/
 
 	}
     catch (const std::exception &ex) {
@@ -301,5 +444,5 @@ int main()
 
 	// If this program executed up to this line, return 0 to
 	// indicate that the intended lines of code were executed.
-	return 0;
+	*/return 0;
 }

@@ -24,10 +24,6 @@
 //=============================================================================
 // INCLUDES
 //=============================================================================
-#include <iostream>
-#include <string>
-#include <OpenSim/Common/IO.h>
-#include <OpenSim/Common/FunctionSet.h>
 #include <OpenSim/Simulation/Model/Model.h>
 #include <OpenSim/Simulation/Model/BodySet.h>
 #include <OpenSim/Simulation/Model/CoordinateSet.h>
@@ -46,549 +42,302 @@ using namespace std;
 #define CENTER_OF_MASS_NAME string("center_of_mass")
 
 //=============================================================================
-// CONSTRUCTOR(S) AND DESTRUCTOR
+// CONSTRUCTOR
 //=============================================================================
-//_____________________________________________________________________________
-/*
- * Destructor.
- */
-InducedAccelerationsSolver::~InducedAccelerationsSolver()
-{
-	delete &_coordSet;
-	delete &_bodySet;
-	delete _storeConstraintReactions;
-}
-//_____________________________________________________________________________
-/*
- * Construct an InducedAccelerationsSolver instance.
- *
- * @param aModel Model for which the analysis is to be run.
- */
-InducedAccelerationsSolver::InducedAccelerationsSolver(const Model& model) : Solver(model)
+InducedAccelerationsSolver::InducedAccelerationsSolver(const Model& model) :
+	Solver(model)
 {
 	setAuthors("Ajay Seth");
+	_modelCopy = model;
+	_modelCopy.initSystem();
+	_forceThreshold = 1.0; // 1N
 }
-
-//_____________________________________________________________________________
-/**
- * SetNull().
- */
-void InducedAccelerationsSolver::setNull()
-{
-	setAuthors("Ajay Seth");
-	setupProperties();
-
-	_forceThreshold = 6.00;
-	_coordNames.setSize(0);
-	_bodyNames.setSize(1);
-	_bodyNames[0] = CENTER_OF_MASS_NAME;
-	_computePotentialsOnly = false;
-	_reportConstraintReactions = false;
-	// Analysis does not own contents of these sets
-	_coordSet.setMemoryOwner(false);
-	_bodySet.setMemoryOwner(false);
-
-	_storeConstraintReactions = NULL;
-}
-
-//_____________________________________________________________________________
-/**
- * Assemble the list of contributors for induced acceleration analysis
- */
-void InducedAccelerationsSolver:: assembleContributors()
-{
-	Array<string> contribs;
-	if (!_computePotentialsOnly)
-		contribs.append("total");
-
-	const Set<Actuator> &actuatorSet = _model->getActuators();
-
-	//Do the analysis on the bodies that are in the indices list
-	for(int i=0; i< actuatorSet.getSize(); i++) {
-		contribs.append(actuatorSet.get(i).getName()) ;
-	}
- 
-	contribs.append("gravity");
-	contribs.append("velocity");
-
-	_contributors = contribs;
-}
-
 
 //=============================================================================
-// ANALYSIS
+// SOLVE
 //=============================================================================
-//_____________________________________________________________________________
-/**
- * Compute and record the results.
- *
- * This method, for the purpose of example, records the position and
- * orientation of each body in the model.  You will need to customize it
- * to perform your analysis.
- *
- * @param aT Current time in the simulation.
- * @param aX Current values of the controls.
- * @param aY Current values of the states: includes generalized coords and speeds
- */
-int InducedAccelerationsSolver::record(const SimTK::State& s)
+/* Solve for induced accelerations (udot_f) for any applied force expressed
+   in terms of individual mobility and body forces */
+const SimTK::Vector& InducedAccelerationsSolver::solve(const SimTK::State& s,
+		const SimTK::Vector& appliedMobilityForces, 
+		const SimTK::Vector_<SimTK::SpatialVec>& appliedBodyForces,
+		SimTK::Vector_<SimTK::SpatialVec>* constraintReactions)
 {
-	int nu = _model->getNumSpeeds();
+	SimTK::State& s_solver = _modelCopy.updWorkingState();
+	return s_solver.getUDot();
+}
+
+/* Solve for the induced accelerations (udot_f) for a Force in the model 
+   identified by its name. */
+const SimTK::Vector& InducedAccelerationsSolver::solve(const SimTK::State& s,
+				const string& forceName,
+				bool computeActuatorPotentialOnly,
+				SimTK::Vector_<SimTK::SpatialVec>* constraintReactions)
+{
+	int nu = _modelCopy.getNumSpeeds();
 	double aT = s.getTime();
-	cout << "time = " << aT << endl;
 
-	SimTK::Vector Q = s.getQ();
+	SimTK::State& s_solver = _modelCopy.updWorkingState();
 
-	// Reset Accelerations for coordinates at this time step
-	for(int i=0;i<_coordSet.getSize();i++) {
-		_coordIndAccs[i]->setSize(0);
-	}
-
-	// Reset Accelerations for bodies at this time step
-	for(int i=0;i<_bodySet.getSize();i++) {
-		_bodyIndAccs[i]->setSize(0);
-	}
-
-	// Reset Accelerations for system center of mass at this time step
-	_comIndAccs.setSize(0);
-	_constraintReactions.setSize(0);
-
-    SimTK::State s_analysis = _model->getWorkingState();
-
-	_model->initStateWithoutRecreatingSystem(s_analysis);
-	// Just need to set current time and position to determine state of constraints
-	s_analysis.setTime(aT);
-	s_analysis.setQ(Q);
+	//_modelCopy.initStateWithoutRecreatingSystem(s_solver);
+	// Just need to set current time and kinematics to determine state of constraints
+	s_solver.setTime(aT);
+	s_solver.updQ()=s.getQ();
+	s_solver.updU()=s.getU();
 
 	// Check the external forces and determine if contact constraints should be applied at this time
 	// and turn constraint on if it should be.
-	Array<bool> constraintOn = applyContactConstraintAccordingToExternalForces(s_analysis);
+	Array<bool> constraintOn = applyContactConstraintAccordingToExternalForces(s_solver);
 
 	// Hang on to a state that has the right flags for contact constraints turned on/off
-	_model->setPropertiesFromState(s_analysis);
+	_modelCopy.setPropertiesFromState(s_solver);
 	// Use this state for the remainder of this step (record)
-	s_analysis = _model->getMultibodySystem().realizeTopology();
+	s_solver = _modelCopy.getMultibodySystem().realizeTopology();
 	// DO NOT recreate the system, will lose location of constraint
-	_model->initStateWithoutRecreatingSystem(s_analysis);
+	_modelCopy.initStateWithoutRecreatingSystem(s_solver);
 
-	// Cycle through the force contributors to the system acceleration
-	for(int c=0; c< _contributors.getSize(); c++){			
-		//cout << "Solving for contributor: " << _contributors[c] << endl;
-		// Need to be at the dynamics stage to disable a force
-		_model->getMultibodySystem().realize(s_analysis, SimTK::Stage::Dynamics);
+	//cout << "Solving for contributor: " << _contributors[c] << endl;
+	// Need to be at the dynamics stage to disable a force
+	_modelCopy.getMultibodySystem().realize(s_solver, SimTK::Stage::Dynamics);
 		
-		if(_contributors[c] == "total"){
-			// Set gravity ON
-			_model->getGravityForce().enable(s_analysis);
+	if(forceName == "total"){
+		// Set gravity ON
+		_modelCopy.getGravityForce().enable(s_solver);
 
-			//Use same conditions on constraints
-			s_analysis.setTime(aT);
-			// Set the configuration (gen. coords and speeds) of the model.
-			s_analysis.setQ(Q);
-			s_analysis.setU(s.getU());
-			s_analysis.setZ(s.getZ());
+		//Use same conditions on constraints
+		s_solver.updU() = s.getU();
+		s_solver.updU() = s.getZ();
 
-			//Make sure all the actuators are on!
-			for(int f=0; f<_model->getActuators().getSize(); f++){
-				_model->updActuators().get(f).setDisabled(s_analysis, false);
-			}
+		//Make sure all the actuators are on!
+		for(int f=0; f<_modelCopy.getActuators().getSize(); f++){
+			_modelCopy.updActuators().get(f).setDisabled(s_solver, false);
+		}
 
-			// Get to  the point where we can evaluate unilateral constraint conditions
-			 _model->getMultibodySystem().realize(s_analysis, SimTK::Stage::Acceleration);
+		// Get to  the point where we can evaluate unilateral constraint conditions
+		_modelCopy.getMultibodySystem().realize(s_solver, SimTK::Stage::Acceleration);
 
-		    /* *********************************** ERROR CHECKING *******************************
-			SimTK::Vec3 pcom =_model->getMultibodySystem().getMatterSubsystem().calcSystemMassCenterLocationInGround(s_analysis);
-			SimTK::Vec3 vcom =_model->getMultibodySystem().getMatterSubsystem().calcSystemMassCenterVelocityInGround(s_analysis);
-			SimTK::Vec3 acom =_model->getMultibodySystem().getMatterSubsystem().calcSystemMassCenterAccelerationInGround(s_analysis);
+		/* *********************************** ERROR CHECKING *******************************
+		SimTK::Vec3 pcom =_modelCopy.getMultibodySystem().getMatterSubsystem().calcSystemMassCenterLocationInGround(s_solver);
+		SimTK::Vec3 vcom =_modelCopy.getMultibodySystem().getMatterSubsystem().calcSystemMassCenterVelocityInGround(s_solver);
+		SimTK::Vec3 acom =_modelCopy.getMultibodySystem().getMatterSubsystem().calcSystemMassCenterAccelerationInGround(s_solver);
 
-			SimTK::Matrix M;
-			_model->getMultibodySystem().getMatterSubsystem().calcM(s_analysis, M);
-			cout << "mass matrix: " << M << endl;
+		SimTK::Matrix M;
+		_modelCopy.getMultibodySystem().getMatterSubsystem().calcM(s_solver, M);
+		cout << "mass matrix: " << M << endl;
 
-			SimTK::Inertia sysInertia = _model->getMultibodySystem().getMatterSubsystem().calcSystemCentralInertiaInGround(s_analysis);
-			cout << "system inertia: " << sysInertia << endl;
+		SimTK::Inertia sysInertia = _modelCopy.getMultibodySystem().getMatterSubsystem().calcSystemCentralInertiaInGround(s_solver);
+		cout << "system inertia: " << sysInertia << endl;
 
-			SimTK::SpatialVec sysMomentum =_model->getMultibodySystem().getMatterSubsystem().calcSystemMomentumAboutGroundOrigin(s_analysis);
-			cout << "system momentum: " << sysMomentum << endl;
+		SimTK::SpatialVec sysMomentum =_modelCopy.getMultibodySystem().getMatterSubsystem().calcSystemMomentumAboutGroundOrigin(s_solver);
+		cout << "system momentum: " << sysMomentum << endl;
 
-			const SimTK::Vector &appliedMobilityForces = _model->getMultibodySystem().getMobilityForces(s_analysis, SimTK::Stage::Dynamics);
-			appliedMobilityForces.dump("All Applied Mobility Forces");
+		const SimTK::Vector &appliedMobilityForces = _modelCopy.getMultibodySystem().getMobilityForces(s_solver, SimTK::Stage::Dynamics);
+		appliedMobilityForces.dump("All Applied Mobility Forces");
 		
-			// Get all applied body forces like those from conact
-			const SimTK::Vector_<SimTK::SpatialVec>& appliedBodyForces = _model->getMultibodySystem().getRigidBodyForces(s_analysis, SimTK::Stage::Dynamics);
-			appliedBodyForces.dump("All Applied Body Forces");
+		// Get all applied body forces like those from conact
+		const SimTK::Vector_<SimTK::SpatialVec>& appliedBodyForces = _modelCopy.getMultibodySystem().getRigidBodyForces(s_solver, SimTK::Stage::Dynamics);
+		appliedBodyForces.dump("All Applied Body Forces");
 
-			SimTK::Vector ucUdot;
-			SimTK::Vector_<SimTK::SpatialVec> ucA_GB;
-			_model->getMultibodySystem().getMatterSubsystem().calcAccelerationIgnoringConstraints(s_analysis, appliedMobilityForces, appliedBodyForces, ucUdot, ucA_GB) ;
-			ucUdot.dump("Udots Ignoring Constraints");
-			ucA_GB.dump("Body Accelerations");
+		SimTK::Vector ucUdot;
+		SimTK::Vector_<SimTK::SpatialVec> ucA_GB;
+		_modelCopy.getMultibodySystem().getMatterSubsystem().calcAccelerationIgnoringConstraints(s_solver, appliedMobilityForces, appliedBodyForces, ucUdot, ucA_GB) ;
+		ucUdot.dump("Udots Ignoring Constraints");
+		ucA_GB.dump("Body Accelerations");
 
-			SimTK::Vector_<SimTK::SpatialVec> constraintBodyForces(_constraintSet.getSize(), SimTK::SpatialVec(SimTK::Vec3(0)));
-			SimTK::Vector constraintMobilityForces(0);
+		SimTK::Vector_<SimTK::SpatialVec> constraintBodyForces(_constraintSet.getSize(), SimTK::SpatialVec(SimTK::Vec3(0)));
+		SimTK::Vector constraintMobilityForces(0);
 
-			int nc = _model->getMultibodySystem().getMatterSubsystem().getNumConstraints();
-			for (SimTK::ConstraintIndex cx(0); cx < nc; ++cx) {
-				if (!_model->getMultibodySystem().getMatterSubsystem().isConstraintDisabled(s_analysis, cx)){
-					cout << "Constraint " << cx << " enabled!" << endl;
-				}
-			}
-			//int nMults = _model->getMultibodySystem().getMatterSubsystem().getTotalMultAlloc();
-
-			for(int i=0; i<constraintOn.getSize(); i++) {
-				if(constraintOn[i])
-					_constraintSet[i].calcConstraintForces(s_analysis, constraintBodyForces, constraintMobilityForces);
-			}
-			constraintBodyForces.dump("Constraint Body Forces");
-			constraintMobilityForces.dump("Constraint Mobility Forces");
-			// ******************************* end ERROR CHECKING *******************************/
-	
-			for(int i=0; i<constraintOn.getSize(); i++) {
-				_constraintSet.get(i).setDisabled(s_analysis, !constraintOn[i]);
-				// Make sure we stay at Dynamics so each constraint can evaluate its conditions
-				_model->getMultibodySystem().realize(s_analysis, SimTK::Stage::Acceleration);
-			}
-
-			// This should also push changes to defaults for unilateral conditions
-			_model->setPropertiesFromState(s_analysis);
-
-		}
-		else if(_contributors[c] == "gravity"){
-			// Set gravity ON
-			_model->updForceSubsystem().setForceIsDisabled(s_analysis, _model->getGravityForce().getForceIndex(), false);
-
-			//s_analysis = _model->initSystem();
-			s_analysis.setTime(aT);
-			s_analysis.setQ(Q);
-
-			// zero velocity
-			s_analysis.setU(SimTK::Vector(nu,0.0));
-			s_analysis.setZ(s.getZ());
-
-			// disable actuator forces
-			for(int f=0; f<_model->getActuators().getSize(); f++){
-				_model->updActuators().get(f).setDisabled(s_analysis, true);
+		int nc = _modelCopy.getMultibodySystem().getMatterSubsystem().getNumConstraints();
+		for (SimTK::ConstraintIndex cx(0); cx < nc; ++cx) {
+			if (!_modelCopy.getMultibodySystem().getMatterSubsystem().isConstraintDisabled(s_solver, cx)){
+				cout << "Constraint " << cx << " enabled!" << endl;
 			}
 		}
-		else if(_contributors[c] == "velocity"){		
-			// Set gravity off
-			_model->updForceSubsystem().setForceIsDisabled(s_analysis, _model->getGravityForce().getForceIndex(), true);
-
-			s_analysis.setTime(aT);
-			s_analysis.setQ(Q);
-
-			// non-zero velocity
-			s_analysis.setU(s.getU());
-			s_analysis.setZ(s.getZ());
-			
-			// zero actuator forces
-			for(int f=0; f<_model->getActuators().getSize(); f++){
-				_model->updActuators().get(f).setDisabled(s_analysis, true);
-			}
-			// Set the configuration (gen. coords and speeds) of the model.
-			_model->getMultibodySystem().realize(s_analysis, SimTK::Stage::Velocity);
-		}
-		else{ //The rest are actuators		
-			// Set gravity ON
-			_model->updForceSubsystem().setForceIsDisabled(s_analysis, _model->getGravityForce().getForceIndex(), true);
-
-			// zero actuator forces
-			for(int f=0; f<_model->getActuators().getSize(); f++){
-				_model->updActuators().get(f).setDisabled(s_analysis, true);
-			}
-
-			//s_analysis = _model->initSystem();
-			s_analysis.setTime(aT);
-			s_analysis.setQ(Q);
-
-			// zero velocity
-			SimTK::Vector U(nu,0.0);
-			s_analysis.setU(U);
-			s_analysis.setZ(s.getZ());
-			// light up the one actuator who's contribution we are looking for
-			int ai = _model->getActuators().getIndex(_contributors[c]);
-			if(ai<0)
-				throw Exception("InducedAcceleration: ERR- Could not find actuator '"+_contributors[c],__FILE__,__LINE__);
-			
-			Actuator &actuator = _model->getActuators().get(ai);
-			actuator.setDisabled(s_analysis, false);
-			actuator.overrideForce(s_analysis, false);
-			Muscle *muscle = dynamic_cast<Muscle *>(&actuator);
-			if(muscle){
-				if(_computePotentialsOnly){
-					muscle->overrideForce(s_analysis, true);
-					muscle->setOverrideForce(s_analysis, 1.0);
-				}
-			}
-
-			// Set the configuration (gen. coords and speeds) of the model.
-			_model->getMultibodySystem().realize(s_analysis, SimTK::Stage::Model);
-			_model->getMultibodySystem().realize(s_analysis, SimTK::Stage::Velocity);
-
-		}// End of if to select contributor 
-
-		// cout << "Constraint 0 is of "<< _constraintSet[0].getConcreteClassName() << " and should be " << constraintOn[0] << " and is actually " <<  (_constraintSet[0].isDisabled(s_analysis) ? "off" : "on") << endl;
-		// cout << "Constraint 1 is of "<< _constraintSet[1].getConcreteClassName() << " and should be " << constraintOn[1] << " and is actually " <<  (_constraintSet[1].isDisabled(s_analysis) ? "off" : "on") << endl;
-
-		// After setting the state of the model and applying forces
-		// Compute the derivative of the multibody system (speeds and accelerations)
-		_model->getMultibodySystem().realize(s_analysis, SimTK::Stage::Acceleration);
-
-		// Sanity check that constraints hasn't totally changed the configuration of the model
-		double error = (Q-s_analysis.getQ()).norm();
-
-		// Report reaction forces for debugging
-		/*
-		SimTK::Vector_<SimTK::SpatialVec> constraintBodyForces(_constraintSet.getSize());
-		SimTK::Vector mobilityForces(0);
+		//int nMults = _modelCopy.getMultibodySystem().getMatterSubsystem().getTotalMultAlloc();
 
 		for(int i=0; i<constraintOn.getSize(); i++) {
 			if(constraintOn[i])
-				_constraintSet.get(i).calcConstraintForces(s_analysis, constraintBodyForces, mobilityForces);
-		}*/
-
-		// VARIABLES
-		SimTK::Vec3 vec,angVec;
-
-		// Get Accelerations for kinematics of bodies
-		for(int i=0;i<_coordSet.getSize();i++) {
-			double acc = _coordSet.get(i).getAccelerationValue(s_analysis);
-
-			if(getInDegrees()) 
-				acc *= SimTK_RADIAN_TO_DEGREE;	
-			_coordIndAccs[i]->append(1, &acc);
+				_constraintSet[i].calcConstraintForces(s_solver, constraintBodyForces, constraintMobilityForces);
+		}
+		constraintBodyForces.dump("Constraint Body Forces");
+		constraintMobilityForces.dump("Constraint Mobility Forces");
+		// ******************************* end ERROR CHECKING *******************************/
+	
+		for(int i=0; i<constraintOn.getSize(); i++) {
+			_replacementConstraints[i].setDisabled(s_solver, !constraintOn[i]);
+			// Make sure we stay at Dynamics so each constraint can evaluate its conditions
+			_modelCopy.getMultibodySystem().realize(s_solver, SimTK::Stage::Acceleration);
 		}
 
-		// cout << "Input Body Names: "<< _bodyNames << endl;
+		// This should also push changes to defaults for unilateral conditions
+		_modelCopy.setPropertiesFromState(s_solver);
 
-		// Get Accelerations for kinematics of bodies
-		for(int i=0;i<_bodySet.getSize();i++) {
-			Body &body = _bodySet.get(i);
-			// cout << "Body Name: "<< body->getName() << endl;
-			SimTK::Vec3 com(0);
-			// Get the center of mass location for this body
-			body.getMassCenter(com);
+	}
+	else if(forceName == "gravity"){
+		// Set gravity ON
+		_modelCopy.updForceSubsystem().setForceIsDisabled(s_solver, _modelCopy.getGravityForce().getForceIndex(), false);
+
+		// zero velocity
+		s_solver.setU(SimTK::Vector(nu,0.0));
+
+		// disable other forces
+		for(int f=0; f<_modelCopy.getForceSet().getSize(); f++){
+			_modelCopy.updForceSet()[f].setDisabled(s_solver, true);
+		}
+	}
+	else if(forceName == "velocity"){		
+		// Set gravity off
+		_modelCopy.updForceSubsystem().setForceIsDisabled(s_solver, _modelCopy.getGravityForce().getForceIndex(), true);
+
+		// non-zero velocity
+		s_solver.updU() = s.getU();
 			
-			// Get the body acceleration
-			_model->getSimbodyEngine().getAcceleration(s_analysis, body, com, vec);
-			_model->getSimbodyEngine().getAngularAcceleration(s_analysis, body, angVec);	
+		// zero actuator forces
+		for(int f=0; f<_modelCopy.getActuators().getSize(); f++){
+			_modelCopy.updActuators().get(f).setDisabled(s_solver, true);
+		}
+		// Set the configuration (gen. coords and speeds) of the model.
+		_modelCopy.getMultibodySystem().realize(s_solver, SimTK::Stage::Velocity);
+	}
+	else{ //The rest are actuators		
+		// Set gravity OFF
+		_modelCopy.updForceSubsystem().setForceIsDisabled(s_solver, _modelCopy.getGravityForce().getForceIndex(), true);
 
-			// CONVERT TO DEGREES?
-			if(getInDegrees()) 
-				angVec *= SimTK_RADIAN_TO_DEGREE;	
-
-			// FILL KINEMATICS ARRAY
-			_bodyIndAccs[i]->append(3, &vec[0]);
-			_bodyIndAccs[i]->append(3, &angVec[0]);
+		// zero actuator forces
+		for(int f=0; f<_modelCopy.getActuators().getSize(); f++){
+			_modelCopy.updActuators().get(f).setDisabled(s_solver, true);
 		}
 
-		// Get Accelerations for kinematics of COM
-		if(_includeCOM){
-			// Get the body acceleration in ground
-			vec = _model->getMultibodySystem().getMatterSubsystem().calcSystemMassCenterAccelerationInGround(s_analysis);
-
-			// FILL KINEMATICS ARRAY
-			_comIndAccs.append(3, &vec[0]);
+		// zero velocity
+		SimTK::Vector U(nu,0.0);
+		s_solver.setU(U);
+		s_solver.updZ() = s.getZ();
+		// light up the one Force who's contribution we are looking for
+		int ai = _modelCopy.getForceSet().getIndex(forceName);
+		if(ai<0){
+			cout << "Force '"<< forceName << "' not found in model '" <<
+				_modelCopy.getName() << "'." << endl;
 		}
+		Force &force = _modelCopy.getForceSet().get(ai);
+		force.setDisabled(s_solver, false);
 
-		// Get induced constraint reactions for contributor
-		if(_reportConstraintReactions){
-			for(int j=0; j<_constraintSet.getSize(); j++){
-				_constraintReactions.append(_constraintSet[j].getRecordValues(s_analysis));
+		Actuator *actuator = dynamic_cast<Actuator*>(&force);
+		if(actuator){
+			if(computeActuatorPotentialOnly){
+				actuator->overrideForce(s_solver, true);
+				actuator->setOverrideForce(s_solver, 1.0);
 			}
 		}
 
-	} // End cycling through contributors at this time step
+		// Set the configuration (gen. coords and speeds) of the model.
+		_modelCopy.getMultibodySystem().realize(s_solver, SimTK::Stage::Model);
+		_modelCopy.getMultibodySystem().realize(s_solver, SimTK::Stage::Velocity);
 
-	// Set the accelerations of coordinates into their storages
-	int nc = _coordSet.getSize();
-	for(int i=0; i<nc; i++) {
-		_storeInducedAccelerations[i]->append(aT, _coordIndAccs[i]->getSize(),&(_coordIndAccs[i]->get(0)));
-	}
+	}// End of if to select contributor 
 
-	// Set the accelerations of bodies into their storages
-	int nb = _bodySet.getSize();
-	for(int i=0; i<nb; i++) {
-		_storeInducedAccelerations[nc+i]->append(aT, _bodyIndAccs[i]->getSize(),&(_bodyIndAccs[i]->get(0)));
-	}
+	// cout << "Constraint 0 is of "<< _constraintSet[0].getConcreteClassName() << " and should be " << constraintOn[0] << " and is actually " <<  (_constraintSet[0].isDisabled(s_solver) ? "off" : "on") << endl;
+	// cout << "Constraint 1 is of "<< _constraintSet[1].getConcreteClassName() << " and should be " << constraintOn[1] << " and is actually " <<  (_constraintSet[1].isDisabled(s_solver) ? "off" : "on") << endl;
 
-	// Set the accelerations of system center of mass into a storage
-	if(_includeCOM){
-		_storeInducedAccelerations[nc+nb]->append(aT, _comIndAccs.getSize(), &_comIndAccs[0]);
-	}
-	if(_reportConstraintReactions){
-		_storeConstraintReactions->append(aT, _constraintReactions.getSize(), &_constraintReactions[0]);
-	}
+	// After setting the state of the model and applying forces
+	// Compute the derivative of the multibody system (speeds and accelerations)
+	_modelCopy.getMultibodySystem().realize(s_solver, SimTK::Stage::Acceleration);
 
-	return(0);
+	// Sanity check that constraints hasn't totally changed the configuration of the model
+	double error = (s.getQ()-s_solver.getQ()).norm();
+
+	// Report reaction forces for debugging
+	/*
+	SimTK::Vector_<SimTK::SpatialVec> constraintBodyForces(_constraintSet.getSize());
+	SimTK::Vector mobilityForces(0);
+
+	for(int i=0; i<constraintOn.getSize(); i++) {
+		if(constraintOn[i])
+			_constraintSet.get(i).calcConstraintForces(s_solver, constraintBodyForces, mobilityForces);
+	}*/
+
+	return s_solver.getUDot();
 }
 
-/**
- * This method is called at the beginning of an analysis so that any
- * necessary initializations may be performed.
- *
- * @param s SimTK:State
- */
-void InducedAccelerationsSolver::initialize(const SimTK::State& s)
-{	
-	// Go forward with a copy of the model so Analysis can add to model if necessary
-	_model = _model->clone();
+const SimTK::State& InducedAccelerationsSolver::
+	getSolvedState(const SimTK::State& s)
+{
+	const SimTK::State& s_solver = _modelCopy.getWorkingState();
 
-	SimTK::State s_copy = s;
-	double time = s_copy.getTime();
-
-	_externalForces.setSize(0);
-
-	//Only add constraint set if constraint type for the analysis is Roll
-	for(int i=0; i<_constraintSet.getSize(); i++){
-		Constraint* contactConstraint = &_constraintSet.get(i);
-		if(contactConstraint)
-			_model->updConstraintSet().adoptAndAppend(contactConstraint);
-	}
-
-	// Create a set of constraints used to model contact with the ground
-	// based on external forces (ExternalForces) applied to the model
-	for(int i=0; i < _model->getForceSet().getSize(); i++){
-		ExternalForce *exf = dynamic_cast<ExternalForce *>(&_model->getForceSet().get(i));
-		if(exf){
-			addContactConstraintFromExternalForce(exf);
-			exf->setDisabled(s_copy, true);
+	// check that state of the model hasn't changed since the solve
+	if((s.getTime() == s_solver.getTime()) &&
+		(s.getNY() == s_solver.getNY())) {
+		// check the solver stage is infact acceleration, if not 
+		// no solver was performed or it was unsuccessful
+		if(s_solver.getSystemStage() >= SimTK::Stage::Acceleration){
+			return s_solver;
+		} else {
+			throw Exception("InducedAccelerationsSolver::"
+				"Cannot access solver state without executing 'solve' first.");
 		}
 	}
-
-	// Get value for gravity
-	_gravity = _model->getGravity();
-
-	SimTK::State &s_analysis =_model->initSystem();
-
-	// UPDATE VARIABLES IN THIS CLASS
-	constructDescription();
-	setupStorage();
+	else{
+		throw Exception("InducedAccelerationsSolver::"
+				"Cannot access solver state when model state has changed.");
+	}
 }
 
-//_____________________________________________________________________________
-/**
- * This method is called at the beginning of an analysis so that any
- * necessary initializations may be performed.
- *
- * This method is meant to be called at the begining of an integration in
- * Model::integBeginCallback() and has the same argument list.
- *
- * @param s SimTK:State
- *
- * @return -1 on error, 0 otherwise.
- */
-int InducedAccelerationsSolver::begin(SimTK::State &s)
+
+
+double InducedAccelerationsSolver::
+	getInducedCoordinateAcceleration(const SimTK::State& s,
+		const string& coordName)
 {
-	if(!proceed()) return(0);
+	const SimTK::State& s_solver = getSolvedState(s);
 
-	initialize(s);
-
-	// RESET STORAGES
-	for(int i = 0; i<_storeInducedAccelerations.getSize(); i++){
-		_storeInducedAccelerations[i]->reset(s.getTime());
+	const Coordinate* coord = NULL; 
+	int ind = _modelCopy.getCoordinateSet().getIndex(coordName);
+	if(ind < 0){
+		std::string msg = "InducedAccelerationsSolver::";
+		msg = msg +	"cannot find coordinate '" + coordName + "'.";
+		throw Exception(msg);
 	}
 
-	cout << "Performing Induced Accelerations Analysis" << endl;
-
-	// RECORD
-	int status = 0;
-	status = record(s);
-
-	return(status);
-}
-//_____________________________________________________________________________
-/**
- * This method is called to perform the analysis.  It can be called during
- * the execution of a forward integrations or after the integration by
- * feeding it the necessary data.
- *
- * When called during an integration, this method is meant to be called in
- * Model::integStepCallback(), which has the same argument list.
- *
- * @param s, state
- * @param stepNumber
- *
- * @return -1 on error, 0 otherwise.
- */
-int InducedAccelerationsSolver::step(const SimTK::State &s, int stepNumber)
-{
-	if(proceed(stepNumber) && getOn())
-		record(s);
-
-	return(0);
-}
-//_____________________________________________________________________________
-/**
- * This method is called at the end of an analysis so that any
- * necessary finalizations may be performed.
- *
- * This method is meant to be called at the end of an integration in
- * Model::integEndCallback() and has the same argument list.
- *
- * @param State
- *
- * @return -1 on error, 0 otherwise.
- */
-int InducedAccelerationsSolver::end(SimTK::State &s)
-{
-	if(!proceed()) return(0);
-
-	record(s);
-
-	return(0);
+	return coord->getAccelerationValue(s_solver);
 }
 
-
-
-
-//=============================================================================
-// IO
-//=============================================================================
-//_____________________________________________________________________________
-/**
- * Print results.
- * 
- * The file names are constructed as
- * aDir + "/" + aBaseName + "_" + ComponentName + aExtension
- *
- * @param aDir Directory in which the results reside.
- * @param aBaseName Base file name.
- * @param aDT Desired time interval between adjacent storage vectors.  Linear
- * interpolation is used to print the data out at the desired interval.
- * @param aExtension File extension.
- *
- * @return 0 on success, -1 on error.
- */
-int InducedAccelerationsSolver::
-printResults(const string &aBaseName,const string &aDir,double aDT,
-				 const string &aExtension)
+const SimTK::SpatialVec& InducedAccelerationsSolver::
+	getInducedBodyAcceleration(const SimTK::State& s,
+		const string& bodyName)
 {
-	// Write out induced accelerations for all kinematic variables
-	for(int i = 0; i < _storeInducedAccelerations.getSize(); i++){
-		Storage::printResult(_storeInducedAccelerations[i],aBaseName+"_"
-			                   +getName()+"_"+_storeInducedAccelerations[i]->getName(),aDir,aDT,aExtension);
+	const SimTK::State& s_solver = getSolvedState(s);
+
+	const Body* body = NULL; 
+	int ind = _modelCopy.getBodySet().getIndex(bodyName);
+	if(ind < 0){
+		std::string msg = "InducedAccelerationsSolver::";
+		msg = msg +	"cannot find body '" + bodyName + "'.";
+		throw Exception(msg);
 	}
 
-	if(_reportConstraintReactions){
-		Storage::printResult(_storeConstraintReactions, aBaseName+"_"
-			                   +getName()+"_"+_storeConstraintReactions->getName(),aDir,aDT,aExtension);
-	}
-	return(0);
+	return _modelCopy.getMatterSubsystem()
+		.getMobilizedBody(body->getIndex())
+		.getBodyAcceleration(s_solver);
 }
 
 
-void InducedAccelerationsSolver::addContactConstraintFromExternalForce(ExternalForce *externalForce)
+SimTK::Vec3 InducedAccelerationsSolver::
+	getInducedMassCenterAcceleration(const SimTK::State& s)
 {
-	_externalForces.append(externalForce);
+	const SimTK::State& s_solver = getSolvedState(s);
+	return _modelCopy.getMatterSubsystem()
+		.calcSystemMassCenterAccelerationInGround(s_solver);
 }
 
-Array<bool> InducedAccelerationsSolver::applyContactConstraintAccordingToExternalForces(SimTK::State &s)
+
+
+Array<bool> InducedAccelerationsSolver::
+	applyContactConstraintAccordingToExternalForces(SimTK::State &s)
 {
-	Array<bool> constraintOn(false, _constraintSet.getSize());
+	Array<bool> constraintOn(false, _replacementConstraints.getSize());
 	double t = s.getTime();
 
-	for(int i=0; i<_externalForces.getSize(); i++){
-		ExternalForce *exf = _externalForces[i];
+	for(int i=0; i<_forcesToReplace.getSize(); i++){
+		ExternalForce* exf = dynamic_cast<ExternalForce*>(&_forcesToReplace[i]);
 		SimTK::Vec3 point, force, gpoint;
 
 		force = exf->getForceAtTime(t);
@@ -599,34 +348,34 @@ Array<bool> InducedAccelerationsSolver::applyContactConstraintAccordingToExterna
 			point = exf->getPointAtTime(t);
 			// point should be expressed in the "applied to" body for consistency across all constraints
 			if(exf->getPointExpressedInBodyName() != exf->getAppliedToBodyName()){
-				int appliedToBodyIndex = _model->getBodySet().getIndex(exf->getAppliedToBodyName());
+				int appliedToBodyIndex = getModel().getBodySet().getIndex(exf->getAppliedToBodyName());
 				if(appliedToBodyIndex < 0){
 					cout << "External force appliedToBody " <<  exf->getAppliedToBodyName() << " not found." << endl;
 				}
 
-				int expressedInBodyIndex = _model->getBodySet().getIndex(exf->getPointExpressedInBodyName());
+				int expressedInBodyIndex = getModel().getBodySet().getIndex(exf->getPointExpressedInBodyName());
 				if(expressedInBodyIndex < 0){
 					cout << "External force expressedInBody " <<  exf->getPointExpressedInBodyName() << " not found." << endl;
 				}
 
-				const Body &appliedToBody = _model->getBodySet().get(appliedToBodyIndex);
-				const Body &expressedInBody = _model->getBodySet().get(expressedInBodyIndex);
+				const Body &appliedToBody = getModel().getBodySet().get(appliedToBodyIndex);
+				const Body &expressedInBody = getModel().getBodySet().get(expressedInBodyIndex);
 
-				_model->getMultibodySystem().realize(s, SimTK::Stage::Velocity);
-				_model->getSimbodyEngine().transformPosition(s, expressedInBody, point, appliedToBody, point);
+				getModel().getMultibodySystem().realize(s, SimTK::Stage::Velocity);
+				getModel().getSimbodyEngine().transformPosition(s, expressedInBody, point, appliedToBody, point);
 			}
 
-			_constraintSet.get(i).setContactPointForInducedAccelerations(s, point);
+			_replacementConstraints[i].setContactPointForInducedAccelerations(s, point);
 
 			// turn on the constraint
-			_constraintSet.get(i).setDisabled(s, false);
+			_replacementConstraints[i].setDisabled(s, false);
 			// return the state of the constraint
 			constraintOn[i] = true;
 
 		}
 		else{
 			// turn off the constraint
-			_constraintSet.get(i).setDisabled(s, true);
+			_replacementConstraints[i].setDisabled(s, true);
 			// return the state of the constraint
 			constraintOn[i] = false;
 		}

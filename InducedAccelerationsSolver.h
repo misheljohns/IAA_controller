@@ -27,12 +27,14 @@
 // INCLUDES
 //=============================================================================
 #include <OpenSim/Simulation/Solver.h>
-#include "OpenSim/Analyses/osimAnalysesDLL.h"
+// Header to define analysis (DLL) interface
+#include "osimAnalysesDLL.h"
 
 namespace OpenSim { 
 
 class Model;
-class ExternalForce;
+class Constraint;
+class Force;
 
 //=============================================================================
 //=============================================================================
@@ -83,7 +85,8 @@ class ExternalForce;
  
   @author Ajay Seth
  */
-class OSIMANALYSES_API InducedAccelerationsSolver : public Solver {
+class OSIMANALYSES_API InducedAccelerationsSolver : public Solver
+{
 OpenSim_DECLARE_CONCRETE_OBJECT(InducedAccelerationsSolver, Solver);
 
 //=============================================================================
@@ -93,43 +96,34 @@ public:
 //----------------------------------------------------------------------------
 // CONSTRUCTION
 //----------------------------------------------------------------------------
-/** Construct an InducedAccelerations solver applied to the given model */
+	/** Construct an InducedAccelerations solver applied to the given model */
 	InducedAccelerationsSolver(const Model &model);
-
-/** Convenience constructor.
-	InducedAccelerationsSolver applied to model with constraints to
-	be applied to replace external forces. 
-	@param[in]	replacementConstraints	Set of constraints to replace
-				external forces (contacts) in the model
-	@see setReplacementConstraints() for details*/
-	InducedAccelerationsSolver(const Model &model, 
-		const ConstraintSet& replacementConstraints);
 
 //----------------------------------------------------------------------------
 // CONFIGURE SOLVER
 //----------------------------------------------------------------------------
-/** Add a constraint that will replace an external or contact force 
-	in the model (identified by name). Replacing a force that is not an
-	ExternalForce, ElasticFoundationForce or HuntCrossleyForce (in contact
-	with ground) will cause an Exception.
+	/** Add a constraint that will replace an external or contact force 
+		in the model (identified by name). Replacing a force that is not an
+		ExternalForce, ElasticFoundationForce or HuntCrossleyForce (in contact
+		with ground) will cause an Exception.
 
-	Any OpenSim::Constraint that implements the method
-	 setContactPointForInducedAccelerations(SimTK::State state, Vec3 point)
-	 (@see OpenSim::Constraint) can be applied as a replacement.
+		Any OpenSim::Constraint that implements the method
+		 setContactPointForInducedAccelerations(SimTK::State state, Vec3 point)
+		 (@see OpenSim::Constraint) can be applied as a replacement.
 
-	A threshold is used to determine when the constraint should be engaged.
-	If the external force magnitude exceeds the threshold, it is replaced 
-	by the constraint to solve for induced accelerations.
-	*/
-	void replaceForceWithConstraint(const string& forceToReplace
+		A threshold is used to determine when the constraint should be engaged.
+		If the external force magnitude exceeds the threshold, it is replaced 
+		by the constraint to solve for induced accelerations.
+	
+	void replaceForceWithConstraint(const std::string& forceToReplace,
 		const Constraint& replacementConstraint,
 		double threshold); 
-
+	*/
 //----------------------------------------------------------------------------
 // SOLVE 
 //----------------------------------------------------------------------------
 	/** Solve for the induced (generalized) accelerations (udot) resulting 
-	    from an applied force. An applied force is expressed as any 
+	    from the suppied force. An supplied force is expressed as any 
 		combination of mobility (generalized) forces and/or body forces.
 		
 		@param[in]	state					current State of the model
@@ -144,16 +138,21 @@ public:
 	const SimTK::Vector& solve(const SimTK::State& state,
 		const SimTK::Vector& appliedMobilityForces, 
 		const SimTK::Vector_<SimTK::SpatialVec>& appliedBodyForces,
-		SimTK::Vector_<SimTK::SpatialVec>& constraintReactions=0);
+		SimTK::Vector_<SimTK::SpatialVec>* constraintReactions=0);
 
 	/** Solve for the induced (generalized) accelerations (udot) resulting
 		from any model force identified by name
 		@param[in]	state		current State of the model
 		@param[in]	forceName   name of model Force contributor
 								"gravity" and "velocity" are special names
-								for gravitational force and velocity
+								for gravitational forces and velocity
 								dependent forces (Coriolis and gyroscopic).
-								Otherwise use Force component name.
+								Otherwise use the name of the Force component.
+		@param[in]  computeActuatorPotentialOnly flag (bool) to determine only the
+												 potential of an Actuator (a Force)
+												 due to an actuation (scalar rep
+												 of the actuator's force magnitude)
+												 of 1. Since force scales linearly 
 
 		@param[out]	constraintReactions     (optional) Vector of induced
 											reaction forces
@@ -161,12 +160,38 @@ public:
 					generalized accelerations (udot) from the specified force.
 	*/
 	const SimTK::Vector& solve(const SimTK::State& s,
-				const string& forceName,
-				SimTK::Vector_<SimTK::SpatialVec>& constraintReactions=0);
+				const std::string& forceName,
+				bool computeActuatorPotentialOnly=false,
+				SimTK::Vector_<SimTK::SpatialVec>* constraintReactions=0);
+
+
+//----------------------------------------------------------------------------
+/** Convenience cooridnate, body, or center of mass acceleration access after
+    solving the system at the current state. NOTE, if the solver has not been
+	called to solve for induced accelerations for a given force contributor,
+	an exception is thrown. These methods are intendted to provide low cost
+	access to accelerations in different forms once accelerations have already
+	been resolved. */
+//----------------------------------------------------------------------------
+	double getInducedCoordinateAcceleration(const SimTK::State& s,
+		const std::string& coordName); 
+	const SimTK::SpatialVec& getInducedBodyAcceleration(const SimTK::State& s,
+		const std::string& bodyName); 
+	SimTK::Vec3 getInducedMassCenterAcceleration(const SimTK::State& s);
+
+protected:
+	/** Helper functions */
+	/** Internal use function to get the solved state that is realized to
+	    Stage::Acceleration. If the state differes from the input state OR
+		the state is not at the acceleration stage, an exception is thrown. */
+	const SimTK::State& getSolvedState(const SimTK::State& s);
+	Array<bool> applyContactConstraintAccordingToExternalForces(SimTK::State &s);
 
 private:
-	ConstraintSet _replacementConstraints; 
-
+	double _forceThreshold;
+	Set<Force> _forcesToReplace;
+	Set<Constraint> _replacementConstraints; 
+	Model _modelCopy;
 
 //=============================================================================
 }; // END of class InducedAccelerationsSolver
