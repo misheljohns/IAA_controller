@@ -46,5 +46,5 @@ aj trunk list
 
 
 TODO:
-problem1: IAAsolver is running the controls again when I try to solve for a muscle IAA
-problem2: realize accelerations always gives a runtime error
+fixed :)
+- visualizer needs to be built using flag in makefile in simbody

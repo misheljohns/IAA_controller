@@ -176,7 +176,7 @@ public:
 		
 		//get Induced Accelerations
 		Matrix A(numdims,numMuscs);
-		A = 1;
+		//A = 1;
 		
 		InducedAccelerationsSolver iaaSolver(*modelCopy);
 		std::cout << "after iaa solver init" << std::endl;
@@ -191,15 +191,32 @@ public:
 		std::cout<<"acc_grav : "<<udot_grav<<std::endl;
 		*/
 
-		int i = 1;
-		Vector udot_musc1 = iaaSolver.solve(s,listMusc[i]->getName(),true); //this uses the controller in the model, so this goes in an infinite loop!!!
-		//std::cout<<"acc_muscl1 : "<<udot_musc1<<std::endl;
-		Vec3 udot_com_musc1 = iaaSolver.getInducedMassCenterAcceleration(s);
-		std::cout<<"acc_com_muscl1 : "<<udot_com_musc1<<std::endl;
+		
+	
 
-		/*
+
+
+		for(int i = 0; i < numMuscs; i++)
+		{
+			std::cout<<"In loop for IAA"<<std::endl;
+			Vector udot_musc = iaaSolver.solve(s,listMusc[i]->getName(),true); //this uses the controller in the model, so this goes in an infinite loop!!!
+			std::cout << "after iaa solving" << std::endl;
+			//std::cout<<"acc_muscl : "<<udot_musc<<std::endl;
+			Vec3 udot_com_musc = iaaSolver.getInducedMassCenterAcceleration(s);
+			std::cout << "after iaa com solving" << std::endl;
+			std::cout<<"acc_com_muscl"<<i<<" : "<<udot_com_musc<<std::endl;
+			//A.row(i) = (Matrix) udot_com_musc;
+			for(int j = 0; i < 3; i ++)
+			{
+				A(j,i) = com_pos_vec(j);
+			}
+		}
+
+
+		
 
 		std::cout<<"A : "<<A;
+		std::cout<<"size of A : "<<A.nrow()<<" x "<<A.ncol()<<std::endl;
 		std::cout<<"b : "<<b;
 		Matrix W(numMuscs,numMuscs);
 		W = 1;
@@ -212,9 +229,11 @@ public:
 		//std::cout<<WTWinv;
 		Matrix AWTWAT(numdims,numdims);
 		AWTWAT = A*WTW*(~A);
+		std::cout<<"AWTWAT"<<AWTWAT;
 		Matrix AWTWATinv(numdims,numdims);
 		FactorLU AWTWATLU(AWTWAT);
 		AWTWATLU.inverse(AWTWATinv);
+		std::cout<<"AWTWATinv"<<AWTWATinv;
 		Matrix x(numMuscs,1);
 		x = WTWinv*(~A)*AWTWATinv*b;
 		std::cout<<"x :"<<x<<"Working, muhahahaha"<<std::endl;
@@ -265,7 +284,7 @@ public:
 		for(int i = 0; i < numMuscs; i++)
 		{
 			// Thelen muscle has only one control
-			Vector muscleControl(1,0.5);// x[i]
+			Vector muscleControl(1,x(i,0));// x[i]
 			// Add in the controls computed for this muscle to the set of all model controls
 			listMusc[i]->addInControls(muscleControl, controls);
 			//Vector muscleControl2(1,0.1);
@@ -300,7 +319,8 @@ int main()
 	try {
 		// Create an OpenSim model from the model file provided.
 		//Model osimModel( "tugOfWar_model_ThelenOnly.osim" );
-		Model osimModel( "C:\\OpenSim 3.0\\Models\\Gait2392_Simbody\\gait2392_simbody.osim" );
+		//Model osimModel( "C:\\OpenSim 3.0\\Models\\Gait2392_Simbody\\gait2392_simbody.osim" );
+		Model osimModel( "gait2392_simbody.osim" );
 		osimModel.setUseVisualizer(useVisualizer);
 		
 		//Add gravity????????????????
