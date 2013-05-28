@@ -29,7 +29,7 @@
 // Include OpenSim and functions
 #include <OpenSim/OpenSim.h>
 // AJ's InducedAccelerationSolver
-#include "InducedAccelerationsSolver.h"
+#include <OpenSim/Analyses/InducedAccelerationsSolver.h>
 
 // This allows us to use OpenSim functions, classes, etc., without having to
 // prefix the names of those things with "OpenSim::".
@@ -57,6 +57,13 @@ public:
 
 	IAAController(double aKp,double aKv) : Controller(), kp( aKp ), kv( aKv) 
 	{
+		//modelCopy = _model->clone();
+		
+		//modelCopy->setAllControllersEnabled(false);
+		//modelCopy->getControllerSet().get(0).setDisabled(true);
+		// getControllers
+		// getMycontroller.setEnabled(False)
+		//
 	}
 
 	/**
@@ -69,9 +76,22 @@ public:
 	{
 		// Get the current time in the simulation.
 		double t = s.getTime();
-
-		//Model model1 = getModel();
+		//Model modelCopy( "C:\\OpenSim 3.0\\Models\\Gait2392_Simbody\\gait2392_simbody.osim" );
+		Model* modelCopy = getModel().clone();
 		
+		// Initialize the system and get the state representing the
+		// system.
+		SimTK::State& si = modelCopy->initSystem();
+
+		// Define non-zero (defaults are 0) states for the free joint.
+		CoordinateSet& modelCoordinateSet = modelCopy->updCoordinateSet();
+
+        // Compute initial conditions for muscles.
+		//osimModel.computeEquilibriumForAuxiliaryStates(si); // this function seems to not exist anymore
+		modelCopy->equilibrateMuscles(si);
+		modelCopy->setAllControllersEnabled(false);
+		//Model model1 = getModel();
+		//_model->getSimbodyEngine().
 		//model1.getActuators		
 		
 		int numMuscs = getActuatorSet().getSize();
@@ -109,12 +129,23 @@ public:
 		b(2,0) = -1*_model->getCoordinateSet().get( "pelvis_tz" ).getValue(s);
 
 		//failed  attempt to get CoM accelerations
-		/*
+		
 		Matrix des_com_pos(3,1);
 		des_com_pos(0,0) = 0;
 		des_com_pos(1,0) = 0;
 		des_com_pos(2,0) = 0;
+
 		
+		//Model* model1 = getModel().clone();		
+		//model1->initStateWithoutRecreatingSystem();
+		//model1->getMultibodySystem().realize(s, SimTK::Stage::Dynamics);
+		//model1->getMultibodySystem().realize(s, SimTK::Stage::Acceleration);
+		std::cout << "before realize" << std::endl;
+		modelCopy->getMultibodySystem().realize(s, SimTK::Stage::Acceleration);
+		//_model->getMultibodySystem().realize(s, SimTK::Stage::Dynamics);
+		//_model->getMultibodySystem().realize(s, SimTK::Stage::Acceleration);//runtime error
+		//std::cout << "ding" << std::endl;
+		/*
 		MultibodySystem &sys = _model->updMultibodySystem();
 		//Vector &mobilityForces = sys.updMobilityForces(s, Stage::Dynamics);
 		sys.realize(s, Stage::Dynamics);
@@ -135,17 +166,27 @@ public:
 		std::cout<<"COM_desired_acc : "<<b<<std::endl;
 		*/
 
-
+		std::cout << "dong" << std::endl;
 		//get Induced Accelerations
 		Matrix A(numdims,numMuscs);
 		A = 1;
 		
-		/*
-		InducedAccelerationsSolver iaaSolver(*_model); //compile error here...
-		// Compute velocity contribution 
+		InducedAccelerationsSolver iaaSolver(*_model);
+		std::cout << "after iaa solver" << std::endl;
+		// Compute velocity contribution		
 		Vector udot_vel = iaaSolver.solve(s, "velocity"); 
 		std::cout<<"acc_vel : "<<udot_vel<<std::endl;
-		*/
+		
+		// Compute gravity contribution
+		Vector udot_grav = iaaSolver.solve(s, "gravity");
+		std::cout<<"acc_grav : "<<udot_grav<<std::endl;
+
+		//int i = 1;
+		//Vector udot_musc1 = iaaSolver.solve(s,listMusc[i]->getName(),true); //this uses the controller in the model, so this goes in an infinite loop!!!
+		//std::cout<<"acc_muscl1 : "<<udot_musc1<<std::endl;
+		//Vec3 udot_com_musc1 = iaaSolver.getInducedMassCenterAcceleration(s);
+		//std::cout<<"acc_com_muscl1 : "<<udot_com_musc1<<std::endl;
+
 
 
 		std::cout<<"A : "<<A;
@@ -230,6 +271,7 @@ private:
 	/** Gains on position and velocity error */
 	double kp;
 	double kv;
+	//Model* modelCopy;
 
 };
 
@@ -243,7 +285,7 @@ private:
 int main()
 {
 	
-	bool useVisualizer = true;
+	bool useVisualizer = false;
 
 	try {
 		// Create an OpenSim model from the model file provided.
@@ -286,7 +328,7 @@ int main()
 
         // Compute initial conditions for muscles.
 		//osimModel.computeEquilibriumForAuxiliaryStates(si); // this function seems to not exist anymore
-		//osimModel.equilibrateMuscles(si);
+		osimModel.equilibrateMuscles(si);
 
 		// Create the integrator and manager for the simulation.
 		SimTK::RungeKuttaMersonIntegrator integrator( osimModel.getMultibodySystem() );

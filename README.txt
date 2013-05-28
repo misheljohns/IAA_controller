@@ -46,6 +46,5 @@ aj trunk list
 
 
 TODO:
-- get IAAsolver working
-- weld feet to ground
-- get com acceleration
+problem1: IAAsolver is running the controls again when I try to solve for a muscle IAA
+problem2: realize accelerations always gives a runtime error
