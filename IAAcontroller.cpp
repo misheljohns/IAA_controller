@@ -122,11 +122,12 @@ public:
 
 		/* Desired acceleration B */
 		Matrix b(numdims,1);
-		
-		//using position of pelvis for now
-		b(0,0) = -1*_model->getCoordinateSet().get( "pelvis_tx" ).getValue(s);
-		b(1,0) = -1*_model->getCoordinateSet().get( "pelvis_ty" ).getValue(s);
-		b(2,0) = -1*_model->getCoordinateSet().get( "pelvis_tz" ).getValue(s);
+
+		//
+		////using position of pelvis for now
+		//b(0,0) = -1*_model->getCoordinateSet().get( "pelvis_tx" ).getValue(s);
+		//b(1,0) = -1*_model->getCoordinateSet().get( "pelvis_ty" ).getValue(s);
+		//b(2,0) = -1*_model->getCoordinateSet().get( "pelvis_tz" ).getValue(s);
 
 		//failed  attempt to get CoM accelerations
 		
@@ -134,7 +135,7 @@ public:
 		des_com_pos(0,0) = 0;
 		des_com_pos(1,0) = 0;
 		des_com_pos(2,0) = 0;
-
+		std::cout<<"Desired CoM position : "<<des_com_pos<<std::endl;
 		
 		//Model* model1 = getModel().clone();		
 		//model1->initStateWithoutRecreatingSystem();
@@ -145,14 +146,16 @@ public:
 		//_model->getMultibodySystem().realize(s, SimTK::Stage::Dynamics);
 		//_model->getMultibodySystem().realize(s, SimTK::Stage::Acceleration);//runtime error
 		//std::cout << "ding" << std::endl;
-		/*
-		MultibodySystem &sys = _model->updMultibodySystem();
+		
+		MultibodySystem &sys = modelCopy->updMultibodySystem();
 		//Vector &mobilityForces = sys.updMobilityForces(s, Stage::Dynamics);
-		sys.realize(s, Stage::Dynamics);
+		//sys.realize(s, Stage::Dynamics);
 		//mobilityForces[0] = 0;
 		//mobilityForces[1] = 0;
 		//sys.realize(s, Stage::Acceleration); //-crashes it every time; so giving  up on COM accleration for now
-		Matrix com_pos, com_vel;
+		
+		Matrix com_pos(3,1);
+		Matrix com_vel(3,1);
 		Vec3 com_pos_vec = sys.getMatterSubsystem().calcSystemMassCenterLocationInGround(s);
 		Vec3 com_vel_vec = sys.getMatterSubsystem().calcSystemMassCenterVelocityInGround(s);
 		for(int i = 0; i < 3; i ++)
@@ -160,19 +163,25 @@ public:
 			com_pos(i,0) = com_pos_vec(i);
 			com_vel(i,0) = com_vel_vec(i);
 		}
-		std::cout<<"COM_position : "<<com_pos<<std::endl;
-		std::cout<<"COM_velocity : "<<com_vel<<std::endl;
+		//std::cout<<"COM_position vector : "<<com_pos_vec<<std::endl;
+		//std::cout<<"COM_velocity vector : "<<com_vel_vec<<std::endl;
+		std::cout<<"COM_position matrix : "<<com_pos<<std::endl;
+		std::cout<<"COM_velocity matrix : "<<com_vel<<std::endl;
 		b = kp*(des_com_pos - com_pos) + kv*(0 - com_vel);
-		std::cout<<"COM_desired_acc : "<<b<<std::endl;
-		*/
+		std::cout<<"COM_desired_acc (b): "<<b<<std::endl;
+		
 
-		std::cout << "dong" << std::endl;
+		std::cout << "After b calc" << std::endl;
+		
+		
 		//get Induced Accelerations
 		Matrix A(numdims,numMuscs);
 		A = 1;
 		
-		InducedAccelerationsSolver iaaSolver(*_model);
-		std::cout << "after iaa solver" << std::endl;
+		InducedAccelerationsSolver iaaSolver(*modelCopy);
+		std::cout << "after iaa solver init" << std::endl;
+		
+		/*
 		// Compute velocity contribution		
 		Vector udot_vel = iaaSolver.solve(s, "velocity"); 
 		std::cout<<"acc_vel : "<<udot_vel<<std::endl;
@@ -180,14 +189,15 @@ public:
 		// Compute gravity contribution
 		Vector udot_grav = iaaSolver.solve(s, "gravity");
 		std::cout<<"acc_grav : "<<udot_grav<<std::endl;
+		*/
 
-		//int i = 1;
-		//Vector udot_musc1 = iaaSolver.solve(s,listMusc[i]->getName(),true); //this uses the controller in the model, so this goes in an infinite loop!!!
+		int i = 1;
+		Vector udot_musc1 = iaaSolver.solve(s,listMusc[i]->getName(),true); //this uses the controller in the model, so this goes in an infinite loop!!!
 		//std::cout<<"acc_muscl1 : "<<udot_musc1<<std::endl;
-		//Vec3 udot_com_musc1 = iaaSolver.getInducedMassCenterAcceleration(s);
-		//std::cout<<"acc_com_muscl1 : "<<udot_com_musc1<<std::endl;
+		Vec3 udot_com_musc1 = iaaSolver.getInducedMassCenterAcceleration(s);
+		std::cout<<"acc_com_muscl1 : "<<udot_com_musc1<<std::endl;
 
-
+		/*
 
 		std::cout<<"A : "<<A;
 		std::cout<<"b : "<<b;
@@ -293,6 +303,10 @@ int main()
 		Model osimModel( "C:\\OpenSim 3.0\\Models\\Gait2392_Simbody\\gait2392_simbody.osim" );
 		osimModel.setUseVisualizer(useVisualizer);
 		
+		//Add gravity????????????????
+		//osimModel.getGravityForce().enable(s);
+
+
 		// Define the initial and final simulation times.
 		double initialTime = 0.0;
 		double finalTime = 1.0;
