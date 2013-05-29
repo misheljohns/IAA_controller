@@ -186,8 +186,9 @@ public:
 		the state is not at the acceleration stage, an exception is thrown. */
 	const SimTK::State& getSolvedState(const SimTK::State& s);
 	Array<bool> applyContactConstraintAccordingToExternalForces(SimTK::State &s);
+	
 
-private:
+//private:
 	double _forceThreshold;
 	Set<Force> _forcesToReplace;
 	Set<Constraint> _replacementConstraints; 

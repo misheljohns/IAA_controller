@@ -81,8 +81,7 @@ public:
 		//Model modelCopy( "C:\\OpenSim 3.0\\Models\\Gait2392_Simbody\\gait2392_simbody.osim" );
 		Model* modelCopy = getModel().clone();
 		modelCopy->setUseVisualizer(false);
-		std::cout<<"orig model visual:"<<_model->getUseVisualizer()<<std::endl;
-		std::cout<<"orig model controllers  enabled:"<<_model->getAllControllersEnabled()<<std::endl;
+		
 		
 		// Initialize the system and get the state representing the
 		// system.
@@ -97,8 +96,10 @@ public:
 		modelCopy->equilibrateMuscles(si);
 		modelCopy->setAllControllersEnabled(false);
 		
-		std::cout<<"copy model visual:"<<modelCopy->getUseVisualizer()<<std::endl;
-		std::cout<<"copy model controllers  enabled:"<<modelCopy->getAllControllersEnabled()<<std::endl;
+		//std::cout<<"orig model visual:"<<_model->getUseVisualizer()<<std::endl;
+		//std::cout<<"orig model controllers  enabled:"<<_model->getAllControllersEnabled()<<std::endl;
+		//std::cout<<"copy model visual:"<<modelCopy->getUseVisualizer()<<std::endl;
+		//std::cout<<"copy model controllers  enabled:"<<modelCopy->getAllControllersEnabled()<<std::endl;
 
 		//Model model1 = getModel();
 		//_model->getSimbodyEngine().
@@ -145,13 +146,13 @@ public:
 		des_com_pos(0,0) = 0;
 		des_com_pos(1,0) = 0.95;
 		des_com_pos(2,0) = 0;
-		std::cout<<"Desired CoM position : "<<des_com_pos<<std::endl;
+		//std::cout<<"Desired CoM position : "<<des_com_pos<<std::endl;
 		
 		//Model* model1 = getModel().clone();		
 		//model1->initStateWithoutRecreatingSystem();
 		//model1->getMultibodySystem().realize(s, SimTK::Stage::Dynamics);
 		//model1->getMultibodySystem().realize(s, SimTK::Stage::Acceleration);
-		std::cout << "before realize" << std::endl;
+		//std::cout << "before realize" << std::endl;
 		modelCopy->getMultibodySystem().realize(si, SimTK::Stage::Acceleration);
 		//_model->getMultibodySystem().realize(s, SimTK::Stage::Dynamics);
 		//_model->getMultibodySystem().realize(s, SimTK::Stage::Acceleration);//runtime error
@@ -175,13 +176,13 @@ public:
 		}
 		//std::cout<<"COM_position vector : "<<com_pos_vec<<std::endl;
 		//std::cout<<"COM_velocity vector : "<<com_vel_vec<<std::endl;
-		std::cout<<"COM_position matrix : "<<com_pos<<std::endl;
-		std::cout<<"COM_velocity matrix : "<<com_vel<<std::endl;
+		//std::cout<<"COM_position matrix : "<<com_pos<<std::endl;
+		//std::cout<<"COM_velocity matrix : "<<com_vel<<std::endl;
 		b = kp*(des_com_pos - com_pos) + kv*(0 - com_vel);
-		std::cout<<"COM_desired_acc (b): "<<b<<std::endl;
+		//std::cout<<"COM_desired_acc (b): "<<b<<std::endl;
 		
 
-		std::cout << "After b calc" << std::endl;
+		//std::cout << "After b calc" << std::endl;
 		
 		
 		//get Induced Accelerations
@@ -189,7 +190,7 @@ public:
 		//A = 1;
 		
 		InducedAccelerationsSolver iaaSolver(*modelCopy);
-		std::cout << "after iaa solver init" << std::endl;
+		//std::cout << "after iaa solver init" << std::endl;
 		
 		/*
 		// Compute velocity contribution		
@@ -208,18 +209,20 @@ public:
 
 		for(int i = 0; i < numMuscs; i++)
 		{
-			std::cout<<"In loop for IAA"<<std::endl;
+			//std::cout<<"In loop for IAA"<<std::endl;
 			Vector udot_musc = iaaSolver.solve(s,listMusc[i]->getName(),true); //this uses the controller in the model, so this goes in an infinite loop!!!
-			std::cout << "after iaa solving" << std::endl;
+			//std::cout << "after iaa solving" << std::endl;
 			//std::cout<<"acc_muscl : "<<udot_musc<<std::endl;
-			Vec3 udot_com_musc = iaaSolver.getInducedMassCenterAcceleration(s);
+			//std::cout<<"IAA model controllers"<<iaaSolver._modelCopy.getAllControllersEnabled()<<std::endl;
+
+			//Vec3 udot_com_musc = iaaSolver.getInducedMassCenterAcceleration(s);
 			//const SimTK::State& s_solver = iaaSolver.getSolvedState(s);
 			//Vec3 udot_com_musc = modelCopy->getMatterSubsystem().calcSystemMassCenterAccelerationInGround(s_solver);
-			//Vec3 udot_com_musc = sys.getMatterSubsystem().calcSystemMassCenterAccelerationInGround(iaaSolver.);
+			Vec3 udot_com_musc = sys.getMatterSubsystem().calcSystemMassCenterAccelerationInGround(iaaSolver._modelCopy.getWorkingState());
 			
 
-			std::cout << "after iaa com solving" << std::endl;
-			std::cout<<"acc_com_muscl"<<i<<" : "<<udot_com_musc<<std::endl;
+			//std::cout << "after iaa com solving" << std::endl;
+			//std::cout<<"acc_com_muscl"<<i<<" : "<<udot_com_musc<<std::endl;
 			//A.row(i) = (Matrix) udot_com_musc;
 			for(int j = 0; j < 3; j ++)
 			{
@@ -232,11 +235,20 @@ public:
 
 		
 
-		std::cout<<"A : "<<A;
-		std::cout<<"size of A : "<<A.nrow()<<" x "<<A.ncol()<<std::endl;
-		std::cout<<"b : "<<b;
+		//std::cout<<"A : "<<A;
+		//std::cout<<"size of A : "<<A.nrow()<<" x "<<A.ncol()<<std::endl;
+		//std::cout<<"b : "<<b;
 		Matrix W(numMuscs,numMuscs);
-		W = 1;
+		//W = 1;
+
+
+
+
+
+
+
+
+
 		Matrix WTW(numMuscs,numMuscs);
 		WTW = (~W)*W;
 		//std::cout<<WTW;
@@ -246,14 +258,14 @@ public:
 		//std::cout<<WTWinv;
 		Matrix AWTWAT(numdims,numdims);
 		AWTWAT = A*WTW*(~A);
-		std::cout<<"AWTWAT"<<AWTWAT;
+		//std::cout<<"AWTWAT"<<AWTWAT;
 		Matrix AWTWATinv(numdims,numdims);
 		FactorLU AWTWATLU(AWTWAT);
 		AWTWATLU.inverse(AWTWATinv);
-		std::cout<<"AWTWATinv"<<AWTWATinv;
+		//std::cout<<"AWTWATinv"<<AWTWATinv;
 		Matrix x(numMuscs,1);
 		x = WTWinv*(~A)*AWTWATinv*b;
-		std::cout<<"x :"<<x<<"Working, muhahahaha"<<std::endl;
+		//std::cout<<"x :"<<x<<"Working, muhahahaha"<<std::endl;
 	
 	
 	//x = inv(W'*W)*A'*inv(A*inv(W'*W)*A')*b
@@ -341,13 +353,10 @@ int main()
 		// Create an OpenSim model from the model file provided.
 		//Model osimModel( "tugOfWar_model_ThelenOnly.osim" );
 		//Model osimModel( "C:\\OpenSim 3.0\\Models\\Gait2392_Simbody\\gait2392_simbody.osim" );
-		Model osimModel( "gait2392_simbody.osim" );
+		//Model osimModel( "gait2392_simbody.osim" );
+		Model osimModel( "gait2392_simbody_weld.osim" );
 		osimModel.setUseVisualizer(useVisualizer);
 		
-		//Add gravity????????????????
-		//osimModel.getGravityForce().enable(s);
-
-
 		// Define the initial and final simulation times.
 		double initialTime = 0.0;
 		double finalTime = 1.0;
@@ -369,6 +378,10 @@ int main()
 		// Define non-zero (defaults are 0) states for the free joint.
 		CoordinateSet& modelCoordinateSet = osimModel.updCoordinateSet();
 
+		// Compute initial conditions for muscles.
+		//osimModel.computeEquilibriumForAuxiliaryStates(si); // this function seems to not exist anymore
+		osimModel.equilibrateMuscles(si);
+
 		// Setup visualizer (if required).
         if (useVisualizer) {
             Visualizer& viz = osimModel.updVisualizer().updSimbodyVisualizer();
@@ -381,13 +394,9 @@ int main()
 		    //viz.setShowFrameNumber(false);
         }
 
-        // Compute initial conditions for muscles.
-		//osimModel.computeEquilibriumForAuxiliaryStates(si); // this function seems to not exist anymore
-		osimModel.equilibrateMuscles(si);
-
 		// Create the integrator and manager for the simulation.
 		SimTK::RungeKuttaMersonIntegrator integrator( osimModel.getMultibodySystem() );
-		integrator.setAccuracy( 1.0e-8 );
+		integrator.setAccuracy( 1.0e-2 );
 
 		Manager manager( osimModel, integrator );
 

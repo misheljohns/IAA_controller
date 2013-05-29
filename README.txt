@@ -46,5 +46,14 @@ aj trunk list
 
 
 TODO:
-fixed :)
-- visualizer needs to be built using flag in makefile in simbody
+- try pelvis..?, com seems to work
+- equilibriate problems with some muscles...
+- use simple forward intergrator?
+
+todo:
+- get activations, max force and calc weight
+- calc new activations <iterate?>
+
+
+
+
