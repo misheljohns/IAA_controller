@@ -29,7 +29,8 @@
 // Include OpenSim and functions
 #include <OpenSim/OpenSim.h>
 // AJ's InducedAccelerationSolver
-#include <OpenSim/Analyses/InducedAccelerationsSolver.h>
+//#include <OpenSim/Analyses/InducedAccelerationsSolver.h>
+#include "InducedAccelerationsSolver.h"
 
 // This allows us to use OpenSim functions, classes, etc., without having to
 // prefix the names of those things with "OpenSim::".
@@ -76,12 +77,17 @@ public:
 	{
 		// Get the current time in the simulation.
 		double t = s.getTime();
+		std::cout<<"time:    XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX   "<<t<<std::endl;
 		//Model modelCopy( "C:\\OpenSim 3.0\\Models\\Gait2392_Simbody\\gait2392_simbody.osim" );
 		Model* modelCopy = getModel().clone();
+		modelCopy->setUseVisualizer(false);
+		std::cout<<"orig model visual:"<<_model->getUseVisualizer()<<std::endl;
+		std::cout<<"orig model controllers  enabled:"<<_model->getAllControllersEnabled()<<std::endl;
 		
 		// Initialize the system and get the state representing the
 		// system.
 		SimTK::State& si = modelCopy->initSystem();
+		si = s;
 
 		// Define non-zero (defaults are 0) states for the free joint.
 		CoordinateSet& modelCoordinateSet = modelCopy->updCoordinateSet();
@@ -90,6 +96,10 @@ public:
 		//osimModel.computeEquilibriumForAuxiliaryStates(si); // this function seems to not exist anymore
 		modelCopy->equilibrateMuscles(si);
 		modelCopy->setAllControllersEnabled(false);
+		
+		std::cout<<"copy model visual:"<<modelCopy->getUseVisualizer()<<std::endl;
+		std::cout<<"copy model controllers  enabled:"<<modelCopy->getAllControllersEnabled()<<std::endl;
+
 		//Model model1 = getModel();
 		//_model->getSimbodyEngine().
 		//model1.getActuators		
@@ -133,7 +143,7 @@ public:
 		
 		Matrix des_com_pos(3,1);
 		des_com_pos(0,0) = 0;
-		des_com_pos(1,0) = 0;
+		des_com_pos(1,0) = 0.95;
 		des_com_pos(2,0) = 0;
 		std::cout<<"Desired CoM position : "<<des_com_pos<<std::endl;
 		
@@ -142,7 +152,7 @@ public:
 		//model1->getMultibodySystem().realize(s, SimTK::Stage::Dynamics);
 		//model1->getMultibodySystem().realize(s, SimTK::Stage::Acceleration);
 		std::cout << "before realize" << std::endl;
-		modelCopy->getMultibodySystem().realize(s, SimTK::Stage::Acceleration);
+		modelCopy->getMultibodySystem().realize(si, SimTK::Stage::Acceleration);
 		//_model->getMultibodySystem().realize(s, SimTK::Stage::Dynamics);
 		//_model->getMultibodySystem().realize(s, SimTK::Stage::Acceleration);//runtime error
 		//std::cout << "ding" << std::endl;
@@ -156,8 +166,8 @@ public:
 		
 		Matrix com_pos(3,1);
 		Matrix com_vel(3,1);
-		Vec3 com_pos_vec = sys.getMatterSubsystem().calcSystemMassCenterLocationInGround(s);
-		Vec3 com_vel_vec = sys.getMatterSubsystem().calcSystemMassCenterVelocityInGround(s);
+		Vec3 com_pos_vec = sys.getMatterSubsystem().calcSystemMassCenterLocationInGround(si);
+		Vec3 com_vel_vec = sys.getMatterSubsystem().calcSystemMassCenterVelocityInGround(si);
 		for(int i = 0; i < 3; i ++)
 		{
 			com_pos(i,0) = com_pos_vec(i);
@@ -193,8 +203,8 @@ public:
 
 		
 	
-
-
+		
+		
 
 		for(int i = 0; i < numMuscs; i++)
 		{
@@ -203,12 +213,19 @@ public:
 			std::cout << "after iaa solving" << std::endl;
 			//std::cout<<"acc_muscl : "<<udot_musc<<std::endl;
 			Vec3 udot_com_musc = iaaSolver.getInducedMassCenterAcceleration(s);
+			//const SimTK::State& s_solver = iaaSolver.getSolvedState(s);
+			//Vec3 udot_com_musc = modelCopy->getMatterSubsystem().calcSystemMassCenterAccelerationInGround(s_solver);
+			//Vec3 udot_com_musc = sys.getMatterSubsystem().calcSystemMassCenterAccelerationInGround(iaaSolver.);
+			
+
 			std::cout << "after iaa com solving" << std::endl;
 			std::cout<<"acc_com_muscl"<<i<<" : "<<udot_com_musc<<std::endl;
 			//A.row(i) = (Matrix) udot_com_musc;
-			for(int j = 0; i < 3; i ++)
+			for(int j = 0; j < 3; j ++)
 			{
-				A(j,i) = com_pos_vec(j);
+				//std::cout << "inside 2nd loop" << std::endl;
+				A(j,i) = udot_com_musc(j);
+				//A(j,i) = 1;
 			}
 		}
 
@@ -283,6 +300,10 @@ public:
 
 		for(int i = 0; i < numMuscs; i++)
 		{
+			if(x(i,0) > 1)
+				x(i,0) = 1;
+			if(x(i,0) < 0)
+				x(i,0) = 0;
 			// Thelen muscle has only one control
 			Vector muscleControl(1,x(i,0));// x[i]
 			// Add in the controls computed for this muscle to the set of all model controls
@@ -314,7 +335,7 @@ private:
 int main()
 {
 	
-	bool useVisualizer = false;
+	bool useVisualizer = true;
 
 	try {
 		// Create an OpenSim model from the model file provided.
