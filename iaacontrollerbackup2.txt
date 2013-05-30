@@ -56,12 +56,12 @@ public:
 	 * @param aKv velocity gain by which velocity error will be multiplied
 	 */
 
-	IAAController(double aKp,double aKv) : Controller(), kp( aKp ), kv( aKv)
+	IAAController(double aKp,double aKv, Model* modelCopy) : Controller(), kp( aKp ), kv( aKv), _modelCopy( modelCopy)
 	{
 		//modelCopy = _model->clone();
 		
-		//modelCopy->setAllControllersEnabled(false);
-		//modelCopy->getControllerSet().get(0).setDisabled(true);
+		//_modelCopy->setAllControllersEnabled(false);
+		//_modelCopy->getControllerSet().get(0).setDisabled(true);
 		// getControllers
 		// getMycontroller.setEnabled(False)
 		//
@@ -77,30 +77,30 @@ public:
 	{
 		// Get the current time in the simulation.
 		double t = s.getTime();
-	//std::cout<<"time:    XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX   "<<t<<std::endl;
+		std::cout<<"time:    XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX   "<<t<<std::endl;
 		//Model modelCopy( "C:\\OpenSim 3.0\\Models\\Gait2392_Simbody\\gait2392_simbody.osim" );
 		Model* modelCopy = getModel().clone();
-		modelCopy->setUseVisualizer(false);
-		modelCopy->updControllerSet().clearAndDestroy();
+		_modelCopy->setUseVisualizer(false);
+		_modelCopy->updControllerSet().clearAndDestroy();
 		
 		
 		// Initialize the system and get the state representing the
 		// system.
-		modelCopy->initSystem();
+		_modelCopy->initSystem();
 		//si = s;
 
 		// Define non-zero (defaults are 0) states for the free joint.
-		//CoordinateSet& modelCoordinateSet = modelCopy->updCoordinateSet();
+		//CoordinateSet& modelCoordinateSet = _modelCopy->updCoordinateSet();
 
         // Compute initial conditions for muscles.
 		//osimModel.computeEquilibriumForAuxiliaryStates(si); // this function seems to not exist anymore
-		//modelCopy->equilibrateMuscles(si);
+		//_modelCopy->equilibrateMuscles(si);
 		
 		
 		//std::cout<<"orig model visual:"<<_model->getUseVisualizer()<<std::endl;
 		//std::cout<<"orig model controllers  enabled:"<<_model->getAllControllersEnabled()<<std::endl;
-		//std::cout<<"copy model visual:"<<modelCopy->getUseVisualizer()<<std::endl;
-		//std::cout<<"copy model controllers  enabled:"<<modelCopy->getAllControllersEnabled()<<std::endl;
+		//std::cout<<"copy model visual:"<<_modelCopy->getUseVisualizer()<<std::endl;
+		//std::cout<<"copy model controllers  enabled:"<<_modelCopy->getAllControllersEnabled()<<std::endl;
 
 		//Model model1 = getModel();
 		//_model->getSimbodyEngine().
@@ -122,11 +122,7 @@ public:
 			//std::cout << "Muscle "<< i <<" activation = " << listMusc[i]->getActivation(s)<< std::endl;
 			//std::cout << "Muscle "<< i <<" max isometric force = " << listMusc[i]->getMaxIsometricForce()<< std::endl;			
 		}
-	//std::cout <<"Number of muscles:"<< numMuscs << std::endl;
-		//std::cout <<"muscle 0 excitation:"<< listMusc[0]->getExcitation(s) << std::endl;
-		//std::cout <<"muscle 0 control:"<< listMusc[0]->getControl(s) << std::endl;
-		//std::cout <<"Number of muscles:"<< numMuscs << std::endl;
-		
+		//std::cout << numMuscs << std::endl;
 		
 		//_model->
 		//CoordinateSet _coordSet = _model->getCoordinateSet();
@@ -148,17 +144,17 @@ public:
 		//failed  attempt to get CoM accelerations
 		
 		Matrix des_com_pos(3,1);
-		des_com_pos(0,0) = 0;
-		des_com_pos(1,0) = 0.05;
+		des_com_pos(0,0) = 0.1;
+		des_com_pos(1,0) = 1.0;
 		des_com_pos(2,0) = 0;
-	//std::cout<<"Desired CoM position : "<<des_com_pos<<std::endl;
+		//std::cout<<"Desired CoM position : "<<des_com_pos<<std::endl;
 		
 		//Model* model1 = getModel().clone();		
 		//model1->initStateWithoutRecreatingSystem();
 		//model1->getMultibodySystem().realize(s, SimTK::Stage::Dynamics);
 		//model1->getMultibodySystem().realize(s, SimTK::Stage::Acceleration);
 		//std::cout << "before realize" << std::endl;
-		//modelCopy->getMultibodySystem().realize(si, SimTK::Stage::Acceleration);
+		//_modelCopy->getMultibodySystem().realize(si, SimTK::Stage::Acceleration);
 		//_model->getMultibodySystem().realize(s, SimTK::Stage::Dynamics);
 		//_model->getMultibodySystem().realize(s, SimTK::Stage::Acceleration);//runtime error
 		//std::cout << "ding" << std::endl;
@@ -181,11 +177,10 @@ public:
 		}
 		//std::cout<<"COM_position vector : "<<com_pos_vec<<std::endl;
 		//std::cout<<"COM_velocity vector : "<<com_vel_vec<<std::endl;
-	//std::cout<<"COM_position matrix : "<<com_pos<<std::endl;
+		//std::cout<<"COM_position matrix : "<<com_pos<<std::endl;
 		//std::cout<<"COM_velocity matrix : "<<com_vel<<std::endl;
 		b = kp*(des_com_pos - com_pos) + kv*(0 - com_vel);
-		b(1,0) = b(1,0) + 9.8;
-	//std::cout<<"COM_desired_acc (b): "<<b<<std::endl;
+		std::cout<<"COM_desired_acc (b): "<<b<<std::endl;
 		
 
 		//std::cout << "After b calc" << std::endl;
@@ -217,12 +212,12 @@ public:
 			Vector udot_musc = iaaSolver.solve(s,listMusc[i]->getName(),true);//computepotentials for now
 			//std::cout << "after iaa solving" << std::endl;
 			//std::cout<<"acc_muscl : "<<udot_musc<<std::endl;
-			//std::cout<<"IAA model controllers"<<iaaSolver._modelCopy.getAllControllersEnabled()<<std::endl;
+			//std::cout<<"IAA model controllers"<<iaaSolver._modelCopy->getAllControllersEnabled()<<std::endl;
 
 			//Vec3 udot_com_musc = iaaSolver.getInducedMassCenterAcceleration(s);
 			//iaaSolver.getInducedBodyAcceleration(s,"pelvis");
 			//const SimTK::State& s_solver = iaaSolver.getSolvedState(s);
-			//Vec3 udot_com_musc = modelCopy->getMatterSubsystem().calcSystemMassCenterAccelerationInGround(s_solver);
+			//Vec3 udot_com_musc = _modelCopy->getMatterSubsystem().calcSystemMassCenterAccelerationInGround(s_solver);
 			Vec3 udot_com_musc = sys.getMatterSubsystem().calcSystemMassCenterAccelerationInGround(iaaSolver._modelCopy.getWorkingState());
 			
 
@@ -240,7 +235,7 @@ public:
 		//std::cout << "after iaa com solving" << std::endl;
 		
 
-	//std::cout<<"A : "<<A;
+		//std::cout<<"A : "<<A;
 		//std::cout<<"size of A : "<<A.nrow()<<" x "<<A.ncol()<<std::endl;
 		//std::cout<<"b : "<<b;
 		Matrix W(numMuscs,numMuscs);
@@ -250,7 +245,7 @@ public:
 			W(i,i) = 10/listmaxfrcs[i]+0.1/(1-listacts[i])-0.1/listacts[i]; //including the activations this way is not a very good soln, but it's a hack to make the optimization keep the activations below 1
 		}
 		//W = 1;
-	//std::cout<<"W :"<<W<<std::endl;
+		//std::cout<<"W :"<<W<<std::endl;
 		Matrix WTW(numMuscs,numMuscs);
 		WTW = (~W)*W;
 		//std::cout<<WTW;
@@ -267,8 +262,8 @@ public:
 		//std::cout<<"AWTWATinv"<<AWTWATinv;
 		Matrix x(numMuscs,1);
 		x = WTWinv*(~A)*AWTWinvATinv*b;
-	//std::cout<<"x :"<<x<<"Working, muhahahaha"<<std::endl;
-	//std::cout<<"Ax :"<<A*x<<"Working, muhahahaha"<<std::endl;
+		//std::cout<<"x :"<<x<<"Working, muhahahaha"<<std::endl;
+		//std::cout<<"Ax :"<<A*x<<"Working, muhahahaha"<<std::endl;
 	
 	//x = inv(W'*W)*A'*inv(A*inv(W'*W)*A')*b
 
@@ -309,17 +304,17 @@ public:
 		//double* y = new double[num];
 		//y[0] = (1/W[0][0]*W[1][1])*W[1][1]*x[0];
 		//y[1] = (1/W[0][0]*W[1][1])*W[0][0]*x[1];
-		//std::cout<<"x :"<<x<<std::endl;
+		std::cout<<x<<std::endl;
 		for(int i = 0; i < numMuscs; i++)
 		{
 			//double deltaAct = x(i,0)/listmaxfrcs[i];
 			double act = x(i,0)/listmaxfrcs[i];
-		//std::cout<<"present act :"<<listacts[i]<<std::endl;
+			std::cout<<"present act :"<<listacts[i]<<std::endl;
 			if(act > 0.99)
 				act = 0.999;
-			else if(act < 0.001)
+			else if(act < 0)
 				act = 0.001;
-		//std::cout<<"new act :"<<act<<std::endl;	
+			std::cout<<"new act :"<<act<<std::endl;	
 			// Thelen muscle has only one control
 			Vector muscleControl(1,act);// x[i]
 			// Add in the controls computed for this muscle to the set of all model controls
@@ -327,13 +322,9 @@ public:
 			//Vector muscleControl2(1,0.1);
 			//listMusc[0]->addInControls(muscleControl2, controls);
 		}
-
-		free(modelCopy);
-		//delete &iaaSolver;
+		
 	//delete[] ListMusc;
-		_model->updVisualizer().getSimbodyVisualizer().report(s);
 	}
-	
 
 // This section contains the member variables of this controller class.
 private:
@@ -341,7 +332,7 @@ private:
 	/** Gains on position and velocity error */
 	double kp;
 	double kv;
-	//Model* _modelCopy;
+	Model* _modelCopy;
 
 };
 
@@ -362,15 +353,14 @@ int main()
 		//Model osimModel( "tugOfWar_model_ThelenOnly.osim" );
 		//Model osimModel( "C:\\OpenSim 3.0\\Models\\Gait2392_Simbody\\gait2392_simbody.osim" );
 		//Model osimModel( "gait2392_simbody.osim" );
-		//Model osimModel( "gait2392_simbody_weld.osim" );
+		Model osimModel( "gait2392_simbody_weld.osim" );
 		//Model osimModel( "gait10dof18musc_weld_fast.osim" );
-		Model osimModel( "6dof_fast.osim" );
 
-		//Vec3 grav;
-		//grav(0) = 0.0;
-		//grav(1) = 0.0;
-		//grav(2) = 0.0;
-		//osimModel.setGravity(grav);
+		Vec3 grav;
+		grav(0) = 0.0;
+		grav(1) = 0.0;
+		grav(2) = 0.0;
+		osimModel.setGravity(grav);
 
 		//Model osimModel( "gait10dof18musc.osim" );
 		osimModel.setUseVisualizer(useVisualizer);
@@ -380,7 +370,7 @@ int main()
 		double finalTime = 1.0;
 
 		// Create the controller. Pass Kp, Kv values.
-		IAAController *controller = new IAAController(500,10);
+		IAAController *controller = new IAAController(10,1,&osimModel);
 
 		// Give the controller the Model's actuators so it knows
 		// to control those actuators.
@@ -404,12 +394,9 @@ int main()
         if (useVisualizer) {
             Visualizer& viz = osimModel.updVisualizer().updSimbodyVisualizer();
             viz.setWindowTitle("Testing controller");
-		    //viz.setBackgroundType(viz.GroundAndSky);
+		    viz.setBackgroundType(viz.GroundAndSky);
 		    viz.setGroundHeight(0.0);
-		    //viz.setShowShadows(true);
-			//viz.setMode(SimTK::Visualizer::Mode::PassThrough);
-			//viz.setDesiredFrameRate(600);
-			
+		    viz.setShowShadows(true);
 		    viz.setShowFrameRate(false);
 		    viz.setShowSimTime(true);
 			//viz.set
@@ -442,15 +429,15 @@ int main()
 		////manager.setUseConstantDT(true);
 		////manager.setDT()
 		manager.setUseSpecifiedDT(true);
-		double aDT[1000];
-		double step = (finalTime - initialTime)/1000;
-		for (int i = 0; i < 1000; i++)
+		double aDT[333];
+		double step = (finalTime - initialTime)/333;
+		for (int i = 0; i < 333; i++)
 		{
 			aDT[i] = step;
 		}
 		////manager.doIntegration
 		////std::cout<<manager.getFixedStepSize(1);
-		manager.setDTArray(1000,aDT);
+		manager.setDTArray(333,aDT);
 		manager.integrate( si );
 
 		// Save the simulation results.
@@ -477,4 +464,3 @@ int main()
 	// indicate that the intended lines of code were executed.
 	return 0;
 }
-

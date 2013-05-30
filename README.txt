@@ -55,5 +55,8 @@ todo:
 - calc new activations <iterate?>
 
 
+- common model loaded with controller call?
 
-
+decrease the model response time
+find out how to draw on the visualizer
+save states files for opensim open
