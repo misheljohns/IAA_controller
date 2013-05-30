@@ -73,13 +73,22 @@ public:
 		//std::cout <<"Number of muscles:"<< numMuscs << std::endl;
 						
 		Matrix des_com_pos(3,1);
-		//des_com_pos(0,0) = 0.0;
-		//des_com_pos(1,0) = -0.01;
-		//des_com_pos(2,0) = 0.0;
-
-		des_com_pos(0,0) = 0.1*sin(0.5*t);
-		des_com_pos(1,0) = 0.1*cos(0.5*t);
-		des_com_pos(2,0) = 0.001*t;
+		des_com_pos(0,0) = 0.01;
+		des_com_pos(1,0) = 0.0;
+		des_com_pos(2,0) = 0.0;
+		if(t>2)
+			des_com_pos(1,0) = 0.01;
+		if(t>4)
+			des_com_pos(2,0) = 0.01;
+		if(t>6)
+		{
+			des_com_pos(0,0) = 0.0;
+			des_com_pos(1,0) = 0.0;
+			des_com_pos(2,0) = 0.0;
+		}
+		//des_com_pos(0,0) = 0.1*sin(0.5*3.14*t);
+		//des_com_pos(1,0) = 0.0005*t;
+		//des_com_pos(2,0) = 0.1*cos(0.5*3.14*t);
 		//std::cout<<"Desired CoM position : "<<des_com_pos<<std::endl;
 		
 
@@ -164,7 +173,7 @@ public:
 		double act;
 		bool ok_to_proceed;
 
-		for(int itercount = 1;itercount < 10;itercount++)
+		for(int itercount = 1;itercount <= 3;itercount++)
 		{
 			ok_to_proceed = true;
 			WTW = (~W)*W;
@@ -277,7 +286,8 @@ int main()
 		//Model osimModel( "gait2392_simbody.osim" );
 		//Model osimModel( "gait2392_simbody_weld.osim" );
 		//Model osimModel( "gait10dof18musc_weld_fast.osim" );
-		Model osimModel( "6dof_fast.osim" );
+		//Model osimModel( "6dof_fast.osim" );
+		Model osimModel( "6dof.osim" );
 
 		//Vec3 grav;
 		//grav(0) = 0.0;
@@ -293,7 +303,7 @@ int main()
 		double finalTime = 10.0;
 
 		// Create the controller. Pass Kp, Kv values, model
-		IAAController *controller = new IAAController(500,10,&osimModel);
+		IAAController *controller = new IAAController(500,50,&osimModel);
 
 		// Give the controller the Model's actuators so it knows
 		// to control those actuators.
@@ -317,7 +327,7 @@ int main()
         if (useVisualizer) {
             Visualizer& viz = osimModel.updVisualizer().updSimbodyVisualizer();
             viz.setWindowTitle("Testing controller");
-		    viz.setBackgroundType(viz.GroundAndSky);
+		    //viz.setBackgroundType(viz.GroundAndSky);
 		    viz.setGroundHeight(0.0);
 		    viz.setShowShadows(true);
 		    viz.setShowFrameRate(false);
