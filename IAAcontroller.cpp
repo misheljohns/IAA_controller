@@ -1,13 +1,16 @@
-// Author:  Mishel Johns, Chris Ploch
+// Authors:  Mishel Johns, Chris Ploch
 
 //==============================================================================
 //==============================================================================
+
+//#include "IAAController.h"
 
 // Include OpenSim and functions
 #include <OpenSim/OpenSim.h>
-
+ 
 // AJ's InducedAccelerationSolver
-#include "InducedAccelerationsSolver.h"
+#include <OpenSim/Analyses/InducedAccelerationsSolver.h>
+//#include "InducedAccelerationsSolver.h"
 
 // This allows us to use OpenSim functions, classes, etc., without having to
 // prefix the names of those things with "OpenSim::".
@@ -33,14 +36,44 @@ public:
 	 * @param modelCopy Model to be controlled
 	 */
 
-	IAAController(double aKp,double aKv, Model* modelCopy) : Controller(), kp( aKp ), kv( aKv)
+	IAAController(double aKp,double aKv) : Controller(), kp( aKp ), kv( aKv)
 	{
 
-		_modelCopy = modelCopy->clone();
+		iaaSolver = NULL;
+
+	}
+
+	void connectToModel(Model &model)
+	{
+		Super::connectToModel(model);
+
+		// get the list of actuators assigned to the reflex controller
+		Set<Actuator>& actuators = updActuators();
+
+		int cnt=0;
+ 
+		while(cnt < actuators.getSize()){
+			Muscle *musc = dynamic_cast<Muscle*>(&actuators[cnt]);
+			// control muscles only
+			if(!musc){
+				std::cout << "IAAController:: WARNING- controller assigned a non-muscle actuator ";
+				std::cout << actuators[cnt].getName() << " which will be ignored." <<std::endl;
+				actuators.remove(cnt);
+			}else
+				cnt++;
+		}
+	}
+
+	void addToSystem(SimTK::MultibodySystem& system) const
+	{
+
+		Super::addToSystem(system);
+		//std::cout<<"In addToSystem"<<std::endl;
+		_modelCopy = getModel().clone();
 		_modelCopy->setUseVisualizer(false);
 		_modelCopy->updControllerSet().clearAndDestroy();
 		_modelCopy->initSystem();
-
+		iaaSolver = new InducedAccelerationsSolver(*_modelCopy);
 	}
 
 	/**
@@ -51,6 +84,8 @@ public:
 	 */
 	void computeControls(const SimTK::State& s, SimTK::Vector &controls) const
 	{
+		//std::clock_t start = std::clock();
+		//std::cout<<"I'm in here again!!!"<<s.getTime()<<std::endl;
 		// Get the current time in the simulation.
 		double t = s.getTime();
 		//std::cout<<"time:    XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX   "<<t<<std::endl;
@@ -64,9 +99,10 @@ public:
 		for(int i = 0; i < numMuscs; i++)
 		{
 			//get muscles
-			listMusc[i] = dynamic_cast<Muscle*>	( &getActuatorSet().get(i) );
+			listMusc[i] = (Muscle*)	( &getActuatorSet().get(i) );
 			listacts[i] = listMusc[i]->getActivation(s);
 			listmaxfrcs[i] = listMusc[i]->getMaxIsometricForce()*listMusc[i]->getActiveForceLengthMultiplier(s)*listMusc[i]->getForceVelocityMultiplier(s);
+			//listmaxfrcs[i] = listMusc[i]->getMaxIsometricForce();
 			//std::cout<<"length multiplier"<<listMusc[i]->getActiveForceLengthMultiplier(s)<<std::endl;
 			//std::cout<<"velocity multiplier"<<listMusc[i]->getForceVelocityMultiplier(s)<<std::endl;
 		}
@@ -86,15 +122,14 @@ public:
 			des_com_pos(1,0) = 0.0;
 			des_com_pos(2,0) = 0.0;
 		}
+
+		//helix
 		//des_com_pos(0,0) = 0.1*sin(0.5*3.14*t);
 		//des_com_pos(1,0) = 0.0005*t;
 		//des_com_pos(2,0) = 0.1*cos(0.5*3.14*t);
+
 		//std::cout<<"Desired CoM position : "<<des_com_pos<<std::endl;
 		
-
-
-
-
 		MultibodySystem &sys = _model->updMultibodySystem();
 		
 		Matrix com_pos(3,1);
@@ -114,29 +149,30 @@ public:
 		/* Desired acceleration B */
 		Matrix b(numdims,1);
 		b = kp*(des_com_pos - com_pos) + kv*(0 - com_vel);
-		b(1,0) = b(1,0) + 9.8;
 		//std::cout<<"COM_desired_acc (b): "<<b<<std::endl;
 		
 		//get Induced Accelerations
 		Matrix A(numdims,numMuscs);
-		InducedAccelerationsSolver iaaSolver(*_modelCopy);
+		
 		//std::cout << "after iaa solver init" << std::endl;
 		
 		/*
 		// Compute velocity contribution		
-		Vector udot_vel = iaaSolver.solve(s, "velocity"); 
+		Vector udot_vel = iaaSolver->solve(s, "velocity"); 
 		std::cout<<"acc_vel : "<<udot_vel<<std::endl;
-		
-		// Compute gravity contribution
-		Vector udot_grav = iaaSolver.solve(s, "gravity");
-		std::cout<<"acc_grav : "<<udot_grav<<std::endl;
 		*/
+		//Compute gravity contribution
+		Vector udot_grav = iaaSolver->solve(s, "gravity");
+		//std::cout<<"acc_grav : "<<udot_grav<<std::endl;
+		b = b + udot_grav;
+		
 		
 		for(int i = 0; i < numMuscs; i++)
 		{
-			Vector udot_musc = iaaSolver.solve(s,listMusc[i]->getName(),true);//computepotentials for now
-			//std::cout<<"acc_muscl : "<<udot_musc<<std::endl;
-			Vec3 udot_com_musc = sys.getMatterSubsystem().calcSystemMassCenterAccelerationInGround(iaaSolver._modelCopy.getWorkingState());
+			Vector udot_musc = iaaSolver->solve(s,listMusc[i]->getName(),true);//computepotentials for now
+			//std::cout<<"acc_gencoords_muscl"<<i<<" : "<<udot_musc<<std::endl;
+			//Vec3 udot_com_musc = sys.getMatterSubsystem().calcSystemMassCenterAccelerationInGround(iaaSolver->_modelCopy.getWorkingState());
+			Vec3 udot_com_musc = iaaSolver->getInducedMassCenterAcceleration(s);
 			//std::cout<<"acc_com_muscl"<<i<<" : "<<udot_com_musc<<std::endl;
 
 			for(int j = 0; j < 3; j ++)
@@ -146,6 +182,8 @@ public:
 		}
 		//std::cout<<"A : "<<A;
 		//std::cout<<"size of A : "<<A.nrow()<<" x "<<A.ncol()<<std::endl;
+
+		//std::cout<<"after IAA is done = "<<1.e3*(std::clock()-start)/CLOCKS_PER_SEC<<" ms"<<std::endl;
 
 		/* Trying to find optimum controls from IAA */
 		Matrix W(numMuscs,numMuscs);
@@ -157,7 +195,8 @@ public:
 				std::cout<<"max force of muscle "<<i<<" is undefined."<<std::endl;
 				listmaxfrcs[i] = 1;
 			}
-			W(i,i) = 1 + 1000/(0.1+abs(listmaxfrcs[i]))+0.1/(1.001-listacts[i])-0.1/(0.001+listacts[i]); //including the activations this way is not a very good soln, but it's a hack to make the optimization keep the activations below 1
+			W(i,i) = 1/(0.000001+abs(listmaxfrcs[i]));
+			//W(i,i) = 1 + 1000/(0.1+abs(listmaxfrcs[i]))+0.1/(1.001-listacts[i])-0.1/(0.001+listacts[i]); //including the activations this way is not a very good soln, but it's a hack to make the optimization keep the activations below 1
 			//W(i,i) = 1 + 1000/(listmaxfrcs[i])+0.1/(1-listacts[i])-0.1/(0.00+listacts[i]); 
 			if((listacts[i]  < 0.001) || (listacts[i] > 0.999))
 				std::cout<<"activation "<<i<<" crossed limit : "<<listacts[i]<<std::endl;
@@ -194,7 +233,7 @@ public:
 				if(listmaxfrcs[i] < 0.1)
 					listmaxfrcs[i] = abs(listmaxfrcs[i]) + 0.1;
 				act = x(i,0)/listmaxfrcs[i];
-				if(act < -0.01)
+				if(act < 0)
 				{
 					ok_to_proceed = false;
 					W(i,i) = 10000;
@@ -202,7 +241,7 @@ public:
 				else if(act > 1)
 				{
 					ok_to_proceed = false;
-					W(i,i) = 1.2*W(i,i)*act;
+					W(i,i) = W(i,i)*act;
 				}
 			}
 
@@ -221,7 +260,8 @@ public:
 		//std::cout<<"Ax :"<<A*x<<std::endl;
 	
 		//debug code
-		if(!(x(0,0) <= 0)&&!(x(0,0) >= 0))
+		//if(!(x(0,0) <= 0)&&!(x(0,0) >= 0))
+		if(SimTK::isNaN(x(0,0))||SimTK::isInf(x(0,0)))
 		{
 			std::cout<<"Problem - infinite x :"<<std::endl;
 			std::cout<<"x :"<<x<<std::endl;
@@ -242,10 +282,6 @@ public:
 		{
 			act = x(i,0)/listmaxfrcs[i];
 		//std::cout<<"present act :"<<listacts[i]<<std::endl;
-			if(act > 0.999)
-				act = 0.999;
-			else if(act < 0.001)
-				act = 0.001;
 		//std::cout<<"new act :"<<act<<std::endl;	
 
 			//Apply controls
@@ -255,6 +291,7 @@ public:
 			listMusc[i]->addInControls(muscleControl, controls);
 		}
 		//_model->updVisualizer().getSimbodyVisualizer().report(s);
+		//std::cout<<"computeControls time = "<<1.e3*(std::clock()-start)/CLOCKS_PER_SEC<<" ms"<<std::endl;
 	}
 
 // This section contains the member variables of this controller class.
@@ -263,7 +300,8 @@ private:
 	/** Gains on position and velocity error */
 	double kp;
 	double kv;
-	Model* _modelCopy;
+	mutable Model* _modelCopy;
+	mutable InducedAccelerationsSolver* iaaSolver;
 
 };
 
@@ -287,6 +325,7 @@ int main()
 		//Model osimModel( "gait2392_simbody_weld.osim" );
 		//Model osimModel( "gait10dof18musc_weld_fast.osim" );
 		//Model osimModel( "6dof_fast.osim" );
+		//Model osimModel( "6dof_rigid.osim" );
 		Model osimModel( "6dof.osim" );
 
 		//Vec3 grav;
@@ -303,7 +342,7 @@ int main()
 		double finalTime = 10.0;
 
 		// Create the controller. Pass Kp, Kv values, model
-		IAAController *controller = new IAAController(500,50,&osimModel);
+		IAAController *controller = new IAAController(500,50);
 
 		// Give the controller the Model's actuators so it knows
 		// to control those actuators.
@@ -336,7 +375,7 @@ int main()
 
 		// Create the integrator and manager for the simulation.
 		SimTK::RungeKuttaMersonIntegrator integrator( osimModel.getMultibodySystem() );
-		integrator.setAccuracy( 1.0e-3 );
+		integrator.setAccuracy( 1.0e-4 );
 
 		Manager manager( osimModel, integrator );
 

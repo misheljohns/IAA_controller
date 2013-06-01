@@ -59,4 +59,8 @@ todo:
 
 decrease the model response time
 find out how to draw on the visualizer
-save states files for opensim open
+
+precalc WTWinv, AWTWinv etc
+b to vector, vector mult
+preallocate matrices
+iteration thrice : 1 - remove -ive, 2 - fix > 1, 3 - final
