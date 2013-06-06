@@ -85,6 +85,7 @@ public:
 	void computeControls(const SimTK::State& s, SimTK::Vector &controls) const
 	{
 		//std::clock_t start = std::clock();
+		//std::cout<<"start time: "<<1.e3*(start)/CLOCKS_PER_SEC<<std::endl;
 		//std::cout<<"I'm in here again!!!"<<s.getTime()<<std::endl;
 		// Get the current time in the simulation.
 		double t = s.getTime();
@@ -107,21 +108,30 @@ public:
 			//std::cout<<"velocity multiplier"<<listMusc[i]->getForceVelocityMultiplier(s)<<std::endl;
 		}
 		//std::cout <<"Number of muscles:"<< numMuscs << std::endl;
-						
+				
+		
 		Matrix des_com_pos(3,1);
+		
+		des_com_pos(0,0) = 0.0394505;
+		des_com_pos(1,0) = 0.639496;
+		des_com_pos(2,0) = 0.000000;
+		
+		/*
 		des_com_pos(0,0) = 0.01;
 		des_com_pos(1,0) = 0.0;
 		des_com_pos(2,0) = 0.0;
-		if(t>2)
-			des_com_pos(1,0) = 0.01;
-		if(t>4)
-			des_com_pos(2,0) = 0.01;
-		if(t>6)
+		if(t>8)
 		{
 			des_com_pos(0,0) = 0.0;
 			des_com_pos(1,0) = 0.0;
-			des_com_pos(2,0) = 0.0;
 		}
+		else if(t>6)
+			des_com_pos(2,0) = 0.00;
+		else if(t>4)
+			des_com_pos(2,0) = 0.01;
+		else if(t>2)
+			des_com_pos(1,0) = 0.01;
+		*/
 
 		//helix
 		//des_com_pos(0,0) = 0.1*sin(0.5*3.14*t);
@@ -151,21 +161,28 @@ public:
 		b = kp*(des_com_pos - com_pos) + kv*(0 - com_vel);
 		//std::cout<<"COM_desired_acc (b): "<<b<<std::endl;
 		
+
+
+		//std::cout<<"before starting IAA = "<<1.e3*(std::clock()-start)/CLOCKS_PER_SEC<<" ms"<<std::endl;
+
 		//get Induced Accelerations
 		Matrix A(numdims,numMuscs);
 		
 		//std::cout << "after iaa solver init" << std::endl;
 		
-		/*
-		// Compute velocity contribution		
-		Vector udot_vel = iaaSolver->solve(s, "velocity"); 
-		std::cout<<"acc_vel : "<<udot_vel<<std::endl;
-		*/
-		//Compute gravity contribution
-		Vector udot_grav = iaaSolver->solve(s, "gravity");
-		//std::cout<<"acc_grav : "<<udot_grav<<std::endl;
-		b = b + udot_grav;
 		
+		// Compute velocity contribution		
+		iaaSolver->solve(s, "velocity");
+		Vector udot_vel = (Vector) iaaSolver->getInducedMassCenterAcceleration(s);
+		//std::cout<<"acc_vel : "<<udot_vel<<std::endl;
+		
+		//Compute gravity contribution
+		iaaSolver->solve(s, "gravity");
+		Vector udot_grav = (Vector) iaaSolver->getInducedMassCenterAcceleration(s);
+		//std::cout<<"acc_grav : "<<udot_grav<<std::endl;
+		//b(1,0) = b(1,0) + 9.8;
+		b = b - udot_grav - udot_vel;
+		//std::cout<<"COM_desired_acc with grav (b): "<<b<<std::endl;
 		
 		for(int i = 0; i < numMuscs; i++)
 		{
@@ -186,8 +203,11 @@ public:
 		//std::cout<<"after IAA is done = "<<1.e3*(std::clock()-start)/CLOCKS_PER_SEC<<" ms"<<std::endl;
 
 		/* Trying to find optimum controls from IAA */
-		Matrix W(numMuscs,numMuscs);
-		W = 0;
+		//Matrix W(numMuscs,numMuscs);
+		//Matrix WTW(numMuscs,numMuscs);
+		Matrix WTWinv(numMuscs,numMuscs);
+		WTWinv = 0;
+		//W = 0;
 		for(int i = 0; i < numMuscs; i++)
 		{
 			if(!(listmaxfrcs[i] <= 0)&&!(listmaxfrcs[i] >= 0))
@@ -195,17 +215,18 @@ public:
 				std::cout<<"max force of muscle "<<i<<" is undefined."<<std::endl;
 				listmaxfrcs[i] = 1;
 			}
-			W(i,i) = 1/(0.000001+abs(listmaxfrcs[i]));
+			//W(i,i) = 1/(0.000001+abs(listmaxfrcs[i]));
+			WTWinv(i,i) = (listmaxfrcs[i])*(listmaxfrcs[i]);
 			//W(i,i) = 1 + 1000/(0.1+abs(listmaxfrcs[i]))+0.1/(1.001-listacts[i])-0.1/(0.001+listacts[i]); //including the activations this way is not a very good soln, but it's a hack to make the optimization keep the activations below 1
 			//W(i,i) = 1 + 1000/(listmaxfrcs[i])+0.1/(1-listacts[i])-0.1/(0.00+listacts[i]); 
-			if((listacts[i]  < 0.001) || (listacts[i] > 0.999))
-				std::cout<<"activation "<<i<<" crossed limit : "<<listacts[i]<<std::endl;
+
+			//if((listacts[i]  < 0.001) || (listacts[i] > 0.999))
+			//	std::cout<<"activation "<<i<<" crossed limit : "<<listacts[i]<<std::endl;
 		}
 		//W = 1;
 		//std::cout<<"W :"<<W<<std::endl;
 		
-		Matrix WTW(numMuscs,numMuscs);
-		Matrix WTWinv(numMuscs,numMuscs);
+		
 		Matrix AWTWinvAT(numdims,numdims);
 		Matrix AWTWinvATinv(numdims,numdims);
 		Matrix x(numMuscs,1);
@@ -215,10 +236,10 @@ public:
 		for(int itercount = 1;itercount <= 3;itercount++)
 		{
 			ok_to_proceed = true;
-			WTW = (~W)*W;
+			//WTW = (~W)*W;
 			//std::cout<<WTW;			
-			FactorLU WTWLU(WTW);
-			WTWLU.inverse(WTWinv);
+			//FactorLU WTWLU(WTW);
+			//WTWLU.inverse(WTWinv);
 			//std::cout<<WTWinv;			
 			AWTWinvAT = A*WTWinv*(~A);
 			//std::cout<"AWTWAT"<<AWTWAT;
@@ -228,20 +249,27 @@ public:
 			x = WTWinv*(~A)*AWTWinvATinv*b;
 			//std::cout<<"x :"<<x<<std::endl;
 			
+			//try to stop knee buckling
+			//if(_model->getCoordinateSet().get("knee_angle_r").getValue(s) < _model->getCoordinateSet().get("knee_angle_r").getRangeMax())
+			//	_model->getMuscles().getGroup("")
+
+
 			for(int i = 0; i < numMuscs; i++)
 			{
-				if(listmaxfrcs[i] < 0.1)
-					listmaxfrcs[i] = abs(listmaxfrcs[i]) + 0.1;
+				
 				act = x(i,0)/listmaxfrcs[i];
+				
 				if(act < 0)
 				{
 					ok_to_proceed = false;
-					W(i,i) = 10000;
+					//W(i,i) = 10000;
+					WTWinv(i,i) = 0.0000000001;
 				}
 				else if(act > 1)
 				{
 					ok_to_proceed = false;
-					W(i,i) = W(i,i)*act;
+					//W(i,i) = W(i,i)*act;
+					WTWinv(i,i) = WTWinv(i,i)/(act*act);
 				}
 			}
 
@@ -260,13 +288,14 @@ public:
 		//std::cout<<"Ax :"<<A*x<<std::endl;
 	
 		//debug code
-		//if(!(x(0,0) <= 0)&&!(x(0,0) >= 0))
-		if(SimTK::isNaN(x(0,0))||SimTK::isInf(x(0,0)))
+		if(!(x(0,0) <= 0)&&!(x(0,0) >= 0))
+		//if(SimTK::isNaN(x(0,0))||SimTK::isInf(x(0,0)))
 		{
 			std::cout<<"Problem - infinite x :"<<std::endl;
 			std::cout<<"x :"<<x<<std::endl;
 			std::cout<<"A :"<<A<<std::endl;
-			std::cout<<"W :"<<W<<std::endl;
+			//std::cout<<"W :"<<W<<std::endl;
+			std::cout<<"WTWinv :"<<WTWinv<<std::endl;
 			std::cout<<"b :"<<b<<std::endl;
 			for(int i = 0; i < numMuscs; i++)
 			{
@@ -274,10 +303,11 @@ public:
 				std::cout<<"maxfrc "<<i<<" : "<<listmaxfrcs[i]<<std::endl;
 				std::cout<<"length multiplier"<<listMusc[i]->getActiveForceLengthMultiplier(s)<<std::endl;
 				std::cout<<"velocity multiplier"<<listMusc[i]->getForceVelocityMultiplier(s)<<std::endl;
-				std::cout<<"Wcalc "<<1 + 1000/(0.1+abs(listmaxfrcs[i]))+0.1/(1.001-listacts[i])-0.1/(0.001+listacts[i])<<std::endl;
+				//std::cout<<"Wcalc "<<1 + 1000/(0.1+abs(listmaxfrcs[i]))+0.1/(1.001-listacts[i])-0.1/(0.001+listacts[i])<<std::endl;
+				
 			}
 		}
-
+		
 		for(int i = 0; i < numMuscs; i++)
 		{
 			act = x(i,0)/listmaxfrcs[i];
@@ -323,10 +353,14 @@ int main()
 		//Model osimModel( "C:\\OpenSim 3.0\\Models\\Gait2392_Simbody\\gait2392_simbody.osim" );
 		//Model osimModel( "gait2392_simbody.osim" );
 		//Model osimModel( "gait2392_simbody_weld.osim" );
+		//Model osimModel( "gait2392_simbody_weld_redmass.osim" );
 		//Model osimModel( "gait10dof18musc_weld_fast.osim" );
+		//Model osimModel( "gait10dof18new_limits.osim" );
 		//Model osimModel( "6dof_fast.osim" );
 		//Model osimModel( "6dof_rigid.osim" );
-		Model osimModel( "6dof.osim" );
+		//Model osimModel( "6dof.osim" );
+		//Model osimModel( "gait10dof24_limits_redmass.osim" );
+		Model osimModel( "gait10dof24_no_torso.osim" );
 
 		//Vec3 grav;
 		//grav(0) = 0.0;
@@ -339,10 +373,10 @@ int main()
 		
 		// Define the initial and final simulation times.
 		double initialTime = 0.0;
-		double finalTime = 10.0;
+		double finalTime = 5.0;
 
 		// Create the controller. Pass Kp, Kv values, model
-		IAAController *controller = new IAAController(500,50);
+		IAAController *controller = new IAAController(5000.00,0.500);
 
 		// Give the controller the Model's actuators so it knows
 		// to control those actuators.
@@ -371,14 +405,16 @@ int main()
 		    viz.setShowShadows(true);
 		    viz.setShowFrameRate(false);
 		    viz.setShowSimTime(true);
+			
         }
 
 		// Create the integrator and manager for the simulation.
 		SimTK::RungeKuttaMersonIntegrator integrator( osimModel.getMultibodySystem() );
+		//SimTK::VerletIntegrator integrator( osimModel.getMultibodySystem() );
 		integrator.setAccuracy( 1.0e-4 );
-
+		
 		Manager manager( osimModel, integrator );
-
+		
 		// Examine the model.
 		osimModel.printDetailedInfo( si, std::cout );
 
